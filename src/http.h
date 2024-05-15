@@ -9,40 +9,47 @@ typedef enum {
     POST
 } method_t;
 
-typedef struct header {
+struct header {
     char* name;
     char* value;
     struct header* next;
-} header_t;
+};
 
 
-typedef struct {
+struct request {
     method_t method;
     char* target;
     char protocol[9];
-    header_t* headers;
+    struct header* headers;
     char* body;
-} request_t;
+};
 
-typedef struct {
+struct response {
     char protocol[9];
     int status;
     char* message;
-    header_t* headers;
+    struct header* headers;
     char* body;
-} response_t;
+};
 
 
-/* Gets the next string in the given message, stopping at delim. Unlike
-strtok(), this does not "eat" multiple deliminators in a row, so empty strings
-are returned for calls between deliminators.
-Returns a null-terminated string.
-message: the HTTP message to parse. Should not contain any null characters.
-delim: the deliminator character to stop at.
-size: the size of the message.
+/* Gets the length of message to the first occurence of delim.
+Unlike strcspn(), this only reads a max of SIZE bytes.
 */
-char* get_token(char* message, char delim, int size);
+int get_token(const char* message, char delim, int size);
 
+/* Parses the request-line of the given message.
+Returns a HTTP status code representing success or failure.
+MESSAGE will be moved to the end of the startline.
+*/
+int req_parse_start(char* message, struct request* req);
+
+
+/* Creates a new HTTP request from the given HTTP message.
+On success, request is filled and 200 is returned.
+On failure, the HTTP status code of the error is returned.
+*/
+int req_parse(char* message, struct request* req);
 
 
 #endif

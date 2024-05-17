@@ -5,10 +5,10 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "http.h"
 
 #define PORT "80"
 #define QUEUE_SIZE 32
-#define REQUEST_SIZE 16384  // 16K
 
 
 // Gets a listening socket for the server.
@@ -85,21 +85,29 @@ int get_socket() {
 // Handles a http request from a client.
 // client_fd must be an open socket to connect to.
 void handle_connection(int client_fd) {
-    char* request = malloc(REQUEST_SIZE);
-    int received = recv(client_fd, request, REQUEST_SIZE - 1, 0);
+    char* message = malloc(REQUEST_SIZE);
+    char* msg_origin = message;  // keep track of start so we can free msg
+    ssize_t received = recv(client_fd, message, REQUEST_SIZE, 0);
     
     if (received == -1) {
         perror("recv");
-        free(request);
+        free(message);
         return;
     }
 
-    
+    struct request req;
+    int parse_status = req_parse(message, &req, received);
+    if (parse_status != 200) {
+        // send an error response
+    }
+    // send a normal response
+
+    req_free(&req);
     
 }
 
 
-int main() {
+int main(int argc, char* argv[]) {
     puts("Served: setting up listening socket");
     int sock_fd = get_socket();
 

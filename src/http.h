@@ -15,7 +15,6 @@ struct header {
     struct header* next;
 };
 
-
 struct request {
     method_t method;
     char* target;
@@ -33,23 +32,23 @@ struct response {
 };
 
 
-/* Gets the length of message to the first occurence of delim.
+/*
+Gets the length of STR to the first occurence of any character in REJECT.
 Unlike strcspn(), this only reads a max of SIZE bytes.
 */
-int get_token(const char* message, char delim, int size);
+size_t memcspn(const char* str, const char* reject, size_t str_size);
 
-/* Parses the request-line of the given message.
-Returns a HTTP status code representing success or failure.
-MESSAGE will be moved to the end of the startline.
-*/
-int req_parse_start(char* message, struct request* req);
-
-
-/* Creates a new HTTP request from the given HTTP message.
-On success, request is filled and 200 is returned.
+/*
+Creates a new HTTP request from the given HTTP message.
+On success, REQ is filled and 200 is returned.
 On failure, the HTTP status code of the error is returned.
 */
-int req_parse(char* message, struct request* req);
+int req_parse(char* message,  struct request* req, size_t msg_size);
+
+/*
+Free all malloc'd members in REQ.
+*/
+void req_free(struct request* req);
 
 
 #endif

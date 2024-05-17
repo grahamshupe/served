@@ -141,6 +141,20 @@ int req_parse(char* message, struct request* req, size_t msg_size) {
     return 200;
 }
 
-void req_free() {
-
+void req_free(struct request* req) {
+    if (req->target != NULL) {
+        free(req->target);
+        req->target = NULL;
+    }
+    if (req->body != NULL) {
+        free(req->body);
+        req->body = NULL;
+    }
+    struct header* runner = req->headers;
+    struct header* next;
+    while (runner != NULL) {
+        next = runner->next;
+        free(runner);
+        runner = next;
+    }
 }

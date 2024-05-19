@@ -10,25 +10,13 @@ TODO:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "http.h"
 
 
 /*
  * Private Functions *
 */
-
-size_t memcspn(const char* str, const char* reject, size_t str_size) {
-    size_t count = 0;
-    size_t reject_len = strlen(reject);
-    for (; count < str_size; count++) {
-        for (size_t i = 0; i < reject_len; i++) {
-            if (reject[i] == str[count]) {
-                return count;
-            }
-        }
-    }
-    return count;
-}
 
 int _req_parse_start(char* message, size_t* size, struct request* req) {
     // Get method:
@@ -59,7 +47,7 @@ int _req_parse_start(char* message, size_t* size, struct request* req) {
     if (token_size == *size)
         return 414;  // target is too long
 
-    req->target = (char*) malloc(token_size + 1);
+    req->target = malloc(token_size + 1);
     strncpy(req->target, message, token_size);
     req->target[token_size] = '\0';
     message += token_size + 1;
@@ -100,7 +88,7 @@ int _req_parse_headers(char* message, size_t* size, struct request* req) {
         size_t name_size = memcspn(message, ":", line_size);
         if (line_size == *size || name_size == line_size)
             return 400;
-        header->name = (char*) malloc(name_size + 1);
+        header->name = malloc(name_size + 1);
         strncpy(header->name, message, name_size);
         header->name[name_size] = '\0';
         message += name_size + 1;
@@ -110,7 +98,7 @@ int _req_parse_headers(char* message, size_t* size, struct request* req) {
         message += ows;  // ignore beginning optional white space
         size_t val_size = memcspn(
             message, " \r", line_size - (name_size + 1 + ows));
-        header->value = (char*) malloc(val_size + 1);
+        header->value = malloc(val_size + 1);
         strncpy(header->value, message, val_size);
         header->value[val_size] = '\0';
         message += line_size - (name_size + 1 + ows + 2);
@@ -126,6 +114,19 @@ int _req_parse_headers(char* message, size_t* size, struct request* req) {
  * Public Functions *
 */
 
+size_t memcspn(const char* str, const char* reject, size_t str_size) {
+    size_t count = 0;
+    size_t reject_len = strlen(reject);
+    for (; count < str_size; count++) {
+        for (size_t i = 0; i < reject_len; i++) {
+            if (reject[i] == str[count]) {
+                return count;
+            }
+        }
+    }
+    return count;
+}
+
 int req_parse(char* message, struct request* req, size_t msg_size) {
     int status = 0;
     if (status = _req_parse_start(message, &msg_size, req) != 200)
@@ -134,7 +135,7 @@ int req_parse(char* message, struct request* req, size_t msg_size) {
         return status;
 
     // Parse body:
-    req->body = (char*) malloc(msg_size + 1);
+    req->body = malloc(msg_size + 1);
     strncpy(req->body, message, msg_size);
     req->body[msg_size] = '\0';
 
@@ -157,4 +158,57 @@ void req_free(struct request* req) {
         free(runner);
         runner = next;
     }
+}
+
+void resp_new(struct response* resp, int status, char* body) {
+    strcpy(resp->protocol, "HTTP/1.1");
+    resp->status = status;
+    switch (status) {
+        // When adding new messages, make sure they are under 32 bytes!
+    case 200:
+        strcpy(resp->reason, "OK");
+        break;
+    case 400:
+        strcpy(resp->reason, "Bad Request");
+        break;
+    case 404:
+        strcpy(resp->reason, "Not Found");
+        break;
+    case 414:
+        strcpy(resp->reason, "URI Too Long");
+        break;
+    case 500:
+        strcpy(resp->reason, "Internal Server Error");
+        break;
+    case 501:
+        strcpy(resp->reason, "Not Implemented");
+        break;
+
+    default:
+        strcpy(resp->reason, "");
+        break;
+    }
+    resp->body = body;
+    resp->headers = malloc(sizeof(struct header));
+    // Add general headers:
+    resp_add_header(resp, "Server", "Served");
+    time_t timer = time(NULL);
+    resp_add_header(resp, "Date", asctime(gmtime(&timer)));
+}
+
+void resp_add_header(struct response* resp, const char* name,
+                    const char* value) {
+    struct header* new = malloc(sizeof(struct header));
+
+    new->name = malloc(strlen(name));
+    strcpy(new->name, name);
+    new->value = malloc(strlen(value));
+    strcpy(new->value, value);
+
+    new->next = resp->headers;
+    resp->headers = new;
+}
+
+void resp_to_str(struct response* resp, char* str) {
+    
 }

@@ -66,6 +66,11 @@ void resp_add_header(struct response* resp, const char* name,
 /*
 Converts the given response into a string, ready to be sent as a HTTP message.
 */
-void resp_to_str(struct response* resp, char* str);
+int resp_to_str(struct response* resp, char* str);
+
+/*
+Frees all malloc'd members in RESP.
+*/
+void resp_free(struct response* resp);
 
 #endif

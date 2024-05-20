@@ -143,14 +143,11 @@ int req_parse(char* message, struct request* req, size_t msg_size) {
 }
 
 void req_free(struct request* req) {
-    if (req->target != NULL) {
-        free(req->target);
-        req->target = NULL;
-    }
-    if (req->body != NULL) {
-        free(req->body);
-        req->body = NULL;
-    }
+    free(req->target);
+    req->target = NULL;
+    free(req->body);
+    req->body = NULL;
+
     struct header* runner = req->headers;
     struct header* next;
     while (runner != NULL) {
@@ -165,35 +162,37 @@ void resp_new(struct response* resp, int status, char* body) {
     resp->status = status;
     switch (status) {
         // When adding new messages, make sure they are under 32 bytes!
-    case 200:
-        strcpy(resp->reason, "OK");
-        break;
-    case 400:
-        strcpy(resp->reason, "Bad Request");
-        break;
-    case 404:
-        strcpy(resp->reason, "Not Found");
-        break;
-    case 414:
-        strcpy(resp->reason, "URI Too Long");
-        break;
-    case 500:
-        strcpy(resp->reason, "Internal Server Error");
-        break;
-    case 501:
-        strcpy(resp->reason, "Not Implemented");
-        break;
+        case 200:
+            strcpy(resp->reason, "OK");
+            break;
+        case 400:
+            strcpy(resp->reason, "Bad Request");
+            break;
+        case 404:
+            strcpy(resp->reason, "Not Found");
+            break;
+        case 414:
+            strcpy(resp->reason, "URI Too Long");
+            break;
+        case 500:
+            strcpy(resp->reason, "Internal Server Error");
+            break;
+        case 501:
+            strcpy(resp->reason, "Not Implemented");
+            break;
 
-    default:
-        strcpy(resp->reason, "");
-        break;
+        default:
+            strcpy(resp->reason, "");
+            break;
     }
     resp->body = body;
     resp->headers = malloc(sizeof(struct header));
     // Add general headers:
     resp_add_header(resp, "Server", "Served");
     time_t timer = time(NULL);
-    resp_add_header(resp, "Date", asctime(gmtime(&timer)));
+    char* time = asctime(gmtime(&timer));
+    time[24] = '\0';                    // CAN I EVEN DO THIS? ITS STATIC!?
+    resp_add_header(resp, "Date", time);
 }
 
 void resp_add_header(struct response* resp, const char* name,
@@ -209,6 +208,32 @@ void resp_add_header(struct response* resp, const char* name,
     resp->headers = new;
 }
 
-void resp_to_str(struct response* resp, char* str) {
+int resp_to_str(struct response* resp, char* str) {
+    // Status line:
+    int end = sprintf(str, "%s %i %s\r\n", resp->protocol, resp->status,
+                     resp->reason);
+    // Headers:
+    struct header* header = resp->headers;
+    while (header != NULL) {
+        end += sprintf(str[end], "%s: %s\r\n", header->name, header->value);
+        header = header->next;
+    }
+    end += sprintf(str[end], "\r\n");
+    // Body:
+    end += sprintf(str[end], "%s", resp->body);
+    return end;
+}
+
+void resp_free(struct response* resp) {
+    free(resp->body);
+    resp->body = NULL;
     
+    struct header* runner = resp->headers;
+    struct header* next;
+    while (runner != NULL) {
+        next = runner->next;
+        free(runner);
+        runner = next;
+    }
+    resp->headers = NULL;
 }

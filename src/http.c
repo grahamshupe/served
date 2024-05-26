@@ -186,11 +186,12 @@ void resp_new(struct response* resp, int status, char* body) {
     }
     resp->body = body;
     resp->headers = NULL;
+
     // Add general headers:
     resp_add_header(resp, "Server", "Served");
     time_t timer = time(NULL);
     char* time = asctime(gmtime(&timer));
-    time[24] = '\0';                    // CAN I EVEN DO THIS? ITS STATIC!?
+    time[24] = '\0';
     resp_add_header(resp, "Date", time);
 }
 
@@ -205,6 +206,16 @@ void resp_add_header(struct response* resp, const char* name,
 
     new->next = resp->headers;
     resp->headers = new;
+}
+
+char* resp_get_header(struct response* resp, const char* name) {
+    struct header* runner = resp->headers;
+    while (runner != NULL) {
+        if (strcmp(runner->name, name) == 0)
+            return runner->value;
+        runner = runner->next;
+    }
+    return NULL;
 }
 
 int resp_to_str(struct response* resp, char* str) {

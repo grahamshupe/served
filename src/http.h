@@ -64,6 +64,12 @@ void resp_add_header(struct response* resp, const char* name,
                     const char* value);
 
 /*
+Returns the value of the header in RESP with the given NAME,
+or NULL if not found.
+*/
+char* resp_get_header(struct response* resp, const char* name);
+
+/*
 Converts the given response into a string, ready to be sent as a HTTP message.
 */
 int resp_to_str(struct response* resp, char* str);

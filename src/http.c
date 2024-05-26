@@ -72,17 +72,14 @@ int _req_parse_headers(char** message, size_t* size, struct request* req) {
     req->headers = NULL;
 
     while ((line_size = memcspn(*message, "\r", *size)) != 0) {
-        // Add header to end of the headers linked list:
+        // Add header to the start of the headers linked list:
         struct header* header = malloc(sizeof(struct header));
-        if (req->headers == NULL) {
-            req->headers = header;
+        if (req->headers != NULL) {
+            header->next = req->headers;
         } else {
-            struct header* runner = req->headers;
-            while (runner->next != NULL) {
-                runner = runner->next;
-            }
-            runner->next = header;
+            header->next = NULL;
         }
+        req->headers = header;
 
         // Get field name:
         size_t name_size = memcspn(*message, ":", line_size);
@@ -152,6 +149,8 @@ void req_free(struct request* req) {
     struct header* next;
     while (runner != NULL) {
         next = runner->next;
+        free(runner->name);
+        free(runner->value);
         free(runner);
         runner = next;
     }
@@ -186,7 +185,7 @@ void resp_new(struct response* resp, int status, char* body) {
             break;
     }
     resp->body = body;
-    resp->headers = malloc(sizeof(struct header));
+    resp->headers = NULL;
     // Add general headers:
     resp_add_header(resp, "Server", "Served");
     time_t timer = time(NULL);
@@ -199,9 +198,9 @@ void resp_add_header(struct response* resp, const char* name,
                     const char* value) {
     struct header* new = malloc(sizeof(struct header));
 
-    new->name = malloc(strlen(name));
+    new->name = malloc(strlen(name) + 1);
     strcpy(new->name, name);
-    new->value = malloc(strlen(value));
+    new->value = malloc(strlen(value) + 1);
     strcpy(new->value, value);
 
     new->next = resp->headers;
@@ -234,6 +233,8 @@ void resp_free(struct response* resp) {
     struct header* next;
     while (runner != NULL) {
         next = runner->next;
+        free(runner->name);
+        free(runner->value);
         free(runner);
         runner = next;
     }

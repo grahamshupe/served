@@ -18,22 +18,22 @@ TODO:
  * Private Functions *
 */
 
-int _req_parse_start(char* message, size_t* size, struct request* req) {
+int _req_parse_start(char** message, size_t* size, struct request* req) {
     // Get method:
     if (*size < 16) {
         // startline can't possibly be long enough
         return 400;
-    } else if (strncmp(message, "GET ", 4)) {
+    } else if (strncmp(*message, "GET ", 4) == 0) {
         req->method = GET;
-        message += 4;
+        *message += 4;
         *size -= 4;
-    } else if (strncmp(message, "HEAD ", 5)) {
+    } else if (strncmp(*message, "HEAD ", 5) == 0) {
         req->method = HEAD;
-        message += 5;
+        *message += 5;
         *size -= 5;
-    } else if (strncmp(message, "POST ", 5)) {
+    } else if (strncmp(*message, "POST ", 5) == 0) {
         req->method = POST;
-        message += 5;
+        *message += 5;
         *size -= 5;
     } else {
         // invalid method
@@ -41,20 +41,20 @@ int _req_parse_start(char* message, size_t* size, struct request* req) {
     }
 
     // Get target:
-    size_t token_size = memcspn(message, " ", *size);
+    size_t token_size = memcspn(*message, " ", *size);
     if (token_size == 0)
         return 400;  // no target or too many spaces given
     if (token_size == *size)
         return 414;  // target is too long
 
     req->target = malloc(token_size + 1);
-    strncpy(req->target, message, token_size);
+    strncpy(req->target, *message, token_size);
     req->target[token_size] = '\0';
-    message += token_size + 1;
+    *message += token_size + 1;
     *size -= token_size + 1;
 
     // Get protocol:
-    if (*size < 10 || strncmp(message, "HTTP/1.1\r\n", 10) != 0) {
+    if (*size < 10 || strncmp(*message, "HTTP/1.1\r\n", 10) != 0) {
         // invalid protocol (must be HTTP/1.1)
         free(req->target);
         req->target = NULL;
@@ -62,16 +62,16 @@ int _req_parse_start(char* message, size_t* size, struct request* req) {
     }
     strncpy(req->protocol, "HTTP/1.1", 9);
 
-    message += 10;  // go to the end of the startline
+    *message += 10;  // go to the end of the startline
     *size -= 10;
     return 200;
 }
 
-int _req_parse_headers(char* message, size_t* size, struct request* req) {
+int _req_parse_headers(char** message, size_t* size, struct request* req) {
     size_t line_size = 0;
     req->headers = NULL;
 
-    while ((line_size = memcspn(message, "\r", *size)) != 0) {
+    while ((line_size = memcspn(*message, "\r", *size)) != 0) {
         // Add header to end of the headers linked list:
         struct header* header = malloc(sizeof(struct header));
         if (req->headers == NULL) {
@@ -85,27 +85,27 @@ int _req_parse_headers(char* message, size_t* size, struct request* req) {
         }
 
         // Get field name:
-        size_t name_size = memcspn(message, ":", line_size);
+        size_t name_size = memcspn(*message, ":", line_size);
         if (line_size == *size || name_size == line_size)
             return 400;
         header->name = malloc(name_size + 1);
-        strncpy(header->name, message, name_size);
+        strncpy(header->name, *message, name_size);
         header->name[name_size] = '\0';
-        message += name_size + 1;
+        *message += name_size + 1;
 
         // Get field value:
-        size_t ows = strspn(message, " ");
-        message += ows;  // ignore beginning optional white space
+        size_t ows = strspn(*message, " ");
+        *message += ows;  // ignore beginning optional white space
         size_t val_size = memcspn(
-            message, " \r", line_size - (name_size + 1 + ows));
+            *message, " \r", line_size - (name_size + 1 + ows));
         header->value = malloc(val_size + 1);
-        strncpy(header->value, message, val_size);
+        strncpy(header->value, *message, val_size);
         header->value[val_size] = '\0';
-        message += line_size - (name_size + 1 + ows + 2);
+        *message += line_size + 2 - (name_size + 1 + ows);
         *size -= line_size + 2;
     }
 
-    message += 2;
+    *message += 2;
     *size -= 2;
     return 200;
 }
@@ -129,9 +129,9 @@ size_t memcspn(const char* str, const char* reject, size_t str_size) {
 
 int req_parse(char* message, struct request* req, size_t msg_size) {
     int status = 0;
-    if (status = _req_parse_start(message, &msg_size, req) != 200)
+    if ((status = _req_parse_start(&message, &msg_size, req)) != 200)
         return status;
-    if (status = _req_parse_headers(message, &msg_size, req) != 200)
+    if ((status = _req_parse_headers(&message, &msg_size, req)) != 200)
         return status;
 
     // Parse body:
@@ -209,18 +209,20 @@ void resp_add_header(struct response* resp, const char* name,
 }
 
 int resp_to_str(struct response* resp, char* str) {
+    char* str_ptr;
     // Status line:
     int end = sprintf(str, "%s %i %s\r\n", resp->protocol, resp->status,
                      resp->reason);
     // Headers:
     struct header* header = resp->headers;
     while (header != NULL) {
-        end += sprintf(str[end], "%s: %s\r\n", header->name, header->value);
+        end += sprintf(str_ptr + end, "%s: %s\r\n", header->name,
+            header->value);
         header = header->next;
     }
-    end += sprintf(str[end], "\r\n");
+    end += sprintf(str_ptr + end, "\r\n");
     // Body:
-    end += sprintf(str[end], "%s", resp->body);
+    end += sprintf(str_ptr + end, "%s", resp->body);
     return end;
 }
 

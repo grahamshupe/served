@@ -219,20 +219,20 @@ char* resp_get_header(struct response* resp, const char* name) {
 }
 
 int resp_to_str(struct response* resp, char* str) {
-    char* str_ptr;
     // Status line:
     int end = sprintf(str, "%s %i %s\r\n", resp->protocol, resp->status,
                      resp->reason);
     // Headers:
     struct header* header = resp->headers;
     while (header != NULL) {
-        end += sprintf(str_ptr + end, "%s: %s\r\n", header->name,
+        end += sprintf(str + end, "%s: %s\r\n", header->name,
             header->value);
         header = header->next;
     }
-    end += sprintf(str_ptr + end, "\r\n");
+    end += sprintf(str + end, "\r\n");
     // Body:
-    end += sprintf(str_ptr + end, "%s", resp->body);
+    if (resp->body != NULL)
+        end += sprintf(str + end, "%s", resp->body);
     return end;
 }
 

@@ -156,8 +156,23 @@ void req_free(struct request* req) {
     }
 }
 
-void resp_new(struct response* resp, int status, char* body) {
+void resp_new(struct response* resp) {
     strcpy(resp->protocol, "HTTP/1.1");
+    resp->headers = NULL;
+    resp->body = NULL;
+    resp->status = 0;
+    resp->reason[0] = '\0';
+
+    // Add general headers:
+    resp_add_header(resp, "Server", "Served");
+    time_t timer = time(NULL);
+    char* time = asctime(gmtime(&timer));
+    time[24] = '\0';
+    resp_add_header(resp, "Date", time);
+    resp_add_header(resp, "Connection", "close");
+}
+
+void resp_change_status(struct response* resp, int status) {
     resp->status = status;
     switch (status) {
         // When adding new messages, make sure they are under 32 bytes!
@@ -184,15 +199,6 @@ void resp_new(struct response* resp, int status, char* body) {
             strcpy(resp->reason, "");
             break;
     }
-    resp->body = body;
-    resp->headers = NULL;
-
-    // Add general headers:
-    resp_add_header(resp, "Server", "Served");
-    time_t timer = time(NULL);
-    char* time = asctime(gmtime(&timer));
-    time[24] = '\0';
-    resp_add_header(resp, "Date", time);
 }
 
 void resp_add_header(struct response* resp, const char* name,

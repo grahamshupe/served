@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include "http.h"
 
-#define PORT "3491"
+#define PORT "3460"
 #define QUEUE_SIZE 32
 #define ROOT_PATH "root"
 #define BODY_SIZE 16384
@@ -107,6 +107,10 @@ int handle_get(struct response* resp, struct request* req) {
     resp->body = malloc(BODY_SIZE);
     int size = fread(resp->body, 1, BODY_SIZE, file);
     resp->body[size] = '\0';
+    char value[10];
+    snprintf(value, 10, "%d", size);
+    resp_add_header(resp, "Content-Length", value);
+    resp_add_header(resp, "Content-Type", "text/html; charset=utf-8");
     return 200;
 }
 
@@ -126,24 +130,27 @@ void handle_connection(int client_fd) {
     struct request req;
     int parse_status = req_parse(message, &req, received);
     struct response resp;
-    if (parse_status != 200) {
-        resp_new(&resp, parse_status, NULL);
+    resp_new(&resp);
+    int resp_status = 500;
 
+    if (parse_status != 200) {
+        resp_status = parse_status;
     } else {
         switch (req.method) {
             case GET:
-                resp_new(&resp, 200, NULL);
-                handle_get(&resp, &req);
+                resp_status = handle_get(&resp, &req);
                 break;
-            case HEAD:
             case POST:
+            case HEAD:
             default:
-                resp_new(&resp, 501, NULL);
+                resp_status = 501;
         }
     }
 
+    resp_change_status(&resp, resp_status);
     char resp_msg[BODY_SIZE];
     int resp_size = resp_to_str(&resp, resp_msg);
+    printf("target: %s\n", req.target);
     printf("response:\n%s\n", resp_msg);
     send(client_fd, resp_msg, resp_size, 0);
 

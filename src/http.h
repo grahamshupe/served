@@ -52,10 +52,14 @@ void req_free(struct request* req);
 
 /*
 Fills the members of the given HTTP response.
-Generic headers will be added. Additional headers must be added after
-calling this function.
+Basic headers (date and server info) will be added.
 */
-void resp_new(struct response* resp, int status, char* body);
+void resp_new(struct response* resp);
+
+/*
+Changes the status and reason fields of RESP, given STATUS.
+*/
+void resp_change_status(struct response* resp, int status);
 
 /*
 Adds a new header to RESP with the given NAME and VALUE.

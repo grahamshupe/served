@@ -184,11 +184,19 @@ int main(int argc, char* argv[]) {
         // TODO: print out client address given by accept()
         int client_fd = accept(sock_fd, NULL, NULL);
 
-        // TODO: make this multi-threaded
-        puts("Served: got a connection");
-        handle_connection(client_fd);
-
-        close(client_fd);
+        pid_t pid = 0;
+        pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            return -1;
+        }
+        if (pid == 0) {
+            // child:
+            printf("Served: child handling a connection on fd %d\n", client_fd);
+            handle_connection(client_fd);
+            close(client_fd);
+            return 0;
+        }
     }
 
 

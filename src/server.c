@@ -8,9 +8,9 @@
 #include "http.h"
 
 #define PORT "9015"
-#define QUEUE_SIZE 32
+#define QUEUE_SIZE 64
 #define ROOT_PATH "root"
-#define BODY_SIZE 16384
+#define BODY_SIZE 32768
 
 
 // Gets a listening socket for the server.
@@ -43,8 +43,6 @@ int get_socket() {
         }
 
         // Prevent "address already in use" error for testing:
-
-        // ** TODO: WILL THIS CAUSE PROBLEMS FOR REAL WEB SERVER? **
         int p;
         int success = 0;
         success = setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &p, sizeof(p));
@@ -62,7 +60,6 @@ int get_socket() {
             continue;
         }
 
-        // All done
         break;
     }
 
@@ -87,6 +84,7 @@ int get_socket() {
 // Handles a GET method request.
 int handle_get(struct response* resp, struct request* req) {
     FILE* file = NULL;
+
     // Try to get file:
     char* path = NULL;
     if (strcmp(req->target, "/") == 0) {
@@ -97,16 +95,15 @@ int handle_get(struct response* resp, struct request* req) {
         strcpy(path, ROOT_PATH);
         strcat(path, req->target);
     }
-    printf("Finding %s\n", path);
+
     file = fopen(path, "r");
     if (file == NULL) {
         return 404;
     }
-    
+
     // Get mime type:
     char mime[64];
     char* ext = strrchr(path, '.') + 1;
-    printf("ext: %s\n", ext);
     if (strcmp(ext, "html") == 0)
         strcpy(mime, "text/html; charset=utf-8");
     else if (strcmp(ext, "js") == 0)
@@ -116,24 +113,25 @@ int handle_get(struct response* resp, struct request* req) {
     else
         return 500;
     free(path);
-    printf("mime type: %s\n", mime);
     
     // Fill out the response:
     resp->body = malloc(BODY_SIZE);
     int size = fread(resp->body, 1, BODY_SIZE, file);
     resp->body[size] = '\0';
+
     char value[10];
     snprintf(value, 10, "%d", size);
     resp_add_header(resp, "Content-Length", value);
     resp_add_header(resp, "Content-Type", mime);
     fclose(file);
+
     return 200;
 }
 
 int handle_post(struct response* resp, struct request* req) {
-    printf("POST body: %s\n", req->body);
     FILE* dest = NULL;
     char* type = req_get_header(req, "content-type");
+
     if (type == NULL)
         return 400;
     if (strcmp(type, "application/x-www-form-urlencoded") == 0) {
@@ -156,7 +154,6 @@ void handle_connection(int client_fd) {
     char* message = malloc(REQUEST_SIZE);
     char* msg_origin = message;  // keep track of start so we can free msg
     ssize_t received = recv(client_fd, message, REQUEST_SIZE, 0);
-    //printf("message:\n%s\n", message);
 
     if (received == -1) {
         perror("recv");
@@ -189,8 +186,7 @@ void handle_connection(int client_fd) {
     resp_change_status(&resp, resp_status);
     char resp_msg[BODY_SIZE];
     int resp_size = resp_to_str(&resp, resp_msg);
-    //printf("target: %s\n", req.target);
-    printf("response:\n%s\n", resp_msg);
+    //printf("response:\n%s\n", resp_msg);
     send(client_fd, resp_msg, resp_size, 0);
 
     req_free(&req);

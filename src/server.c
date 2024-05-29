@@ -99,8 +99,9 @@ int handle_get(struct response* resp, struct request* req) {
     }
     printf("Finding %s\n", path);
     file = fopen(path, "r");
-    if (file == NULL)
+    if (file == NULL) {
         return 404;
+    }
     
     // Get mime type:
     char mime[64];
@@ -125,7 +126,28 @@ int handle_get(struct response* resp, struct request* req) {
     snprintf(value, 10, "%d", size);
     resp_add_header(resp, "Content-Length", value);
     resp_add_header(resp, "Content-Type", mime);
+    fclose(file);
     return 200;
+}
+
+int handle_post(struct response* resp, struct request* req) {
+    printf("POST body: %s\n", req->body);
+    FILE* dest = NULL;
+    char* type = req_get_header(req, "content-type");
+    if (type == NULL)
+        return 400;
+    if (strcmp(type, "application/x-www-form-urlencoded") == 0) {
+        int length = atoi(req_get_header(req, "content-length")) - 7;
+        char* answer = req->body + 7;
+        dest = fopen("root/responses.txt", "a");
+        fwrite(answer, 1, length, dest);
+        fwrite("\n", 1, 1, dest);
+        fclose(dest);
+        resp_add_header(resp, "Location", "/responses.txt");
+        return 303;
+    } else {
+        return 501;
+    }
 }
 
 // Handles a http request from a client.
@@ -134,7 +156,7 @@ void handle_connection(int client_fd) {
     char* message = malloc(REQUEST_SIZE);
     char* msg_origin = message;  // keep track of start so we can free msg
     ssize_t received = recv(client_fd, message, REQUEST_SIZE, 0);
-    printf("message:\n%s\n", message);
+    //printf("message:\n%s\n", message);
 
     if (received == -1) {
         perror("recv");
@@ -156,6 +178,8 @@ void handle_connection(int client_fd) {
                 resp_status = handle_get(&resp, &req);
                 break;
             case POST:
+                resp_status = handle_post(&resp, &req);
+                break;
             case HEAD:
             default:
                 resp_status = 501;
@@ -165,7 +189,7 @@ void handle_connection(int client_fd) {
     resp_change_status(&resp, resp_status);
     char resp_msg[BODY_SIZE];
     int resp_size = resp_to_str(&resp, resp_msg);
-    printf("target: %s\n", req.target);
+    //printf("target: %s\n", req.target);
     printf("response:\n%s\n", resp_msg);
     send(client_fd, resp_msg, resp_size, 0);
 

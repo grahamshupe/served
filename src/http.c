@@ -10,6 +10,7 @@ TODO:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <time.h>
 #include "http.h"
 
@@ -17,6 +18,13 @@ TODO:
 /*
  * Private Functions *
 */
+
+// Converts the given string to lowercase
+void _str_tolower(char* str, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        str[i] = tolower(str[i]);
+    }
+}
 
 int _req_parse_start(char** message, size_t* size, struct request* req) {
     // Get method:
@@ -88,6 +96,7 @@ int _req_parse_headers(char** message, size_t* size, struct request* req) {
         header->name = malloc(name_size + 1);
         strncpy(header->name, *message, name_size);
         header->name[name_size] = '\0';
+        _str_tolower(header->name, name_size);
         *message += name_size + 1;
 
         // Get field value:
@@ -98,6 +107,7 @@ int _req_parse_headers(char** message, size_t* size, struct request* req) {
         header->value = malloc(val_size + 1);
         strncpy(header->value, *message, val_size);
         header->value[val_size] = '\0';
+        _str_tolower(header->value, val_size);
         *message += line_size + 2 - (name_size + 1 + ows);
         *size -= line_size + 2;
     }
@@ -217,8 +227,8 @@ void resp_add_header(struct response* resp, const char* name,
     resp->headers = new;
 }
 
-char* resp_get_header(struct response* resp, const char* name) {
-    struct header* runner = resp->headers;
+char* req_get_header(struct request* req, const char* name) {
+    struct header* runner = req->headers;
     while (runner != NULL) {
         if (strcmp(runner->name, name) == 0)
             return runner->value;

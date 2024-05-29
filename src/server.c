@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include "http.h"
 
-#define PORT "3460"
+#define PORT "9015"
 #define QUEUE_SIZE 32
 #define ROOT_PATH "root"
 #define BODY_SIZE 16384
@@ -87,30 +87,44 @@ int get_socket() {
 // Handles a GET method request.
 int handle_get(struct response* resp, struct request* req) {
     FILE* file = NULL;
-    // // Try to get file:
-    // char* path = malloc(strlen(req->target) + strlen(ROOT_PATH) + );
-    // strcpy(path, ROOT_PATH);
-    // strcat(path, req->target);
-    // strcat(path, )
-    // file = fopen(path, "r");
-    // if (file == NULL) {
-    //     free(path);
-    //     return 404;
-    // }
-
-    if (strcmp(req->target, "/") != 0)
-        return 404;
-    file = fopen("root/index.html", "r");
+    // Try to get file:
+    char* path = NULL;
+    if (strcmp(req->target, "/") == 0) {
+        path = malloc(16);
+        strcpy(path, "root/index.html");
+    } else {
+        path = malloc(strlen(req->target) + strlen(ROOT_PATH));
+        strcpy(path, ROOT_PATH);
+        strcat(path, req->target);
+    }
+    printf("Finding %s\n", path);
+    file = fopen(path, "r");
     if (file == NULL)
-        return 500;
+        return 404;
     
+    // Get mime type:
+    char mime[64];
+    char* ext = strrchr(path, '.') + 1;
+    printf("ext: %s\n", ext);
+    if (strcmp(ext, "html") == 0)
+        strcpy(mime, "text/html; charset=utf-8");
+    else if (strcmp(ext, "js") == 0)
+        strcpy(mime, "text/javascript");
+    else if (strcmp(ext, "txt") == 0)
+        strcpy(mime, "text/plain");
+    else
+        return 500;
+    free(path);
+    printf("mime type: %s\n", mime);
+    
+    // Fill out the response:
     resp->body = malloc(BODY_SIZE);
     int size = fread(resp->body, 1, BODY_SIZE, file);
     resp->body[size] = '\0';
     char value[10];
     snprintf(value, 10, "%d", size);
     resp_add_header(resp, "Content-Length", value);
-    resp_add_header(resp, "Content-Type", "text/html; charset=utf-8");
+    resp_add_header(resp, "Content-Type", mime);
     return 200;
 }
 
@@ -120,6 +134,7 @@ void handle_connection(int client_fd) {
     char* message = malloc(REQUEST_SIZE);
     char* msg_origin = message;  // keep track of start so we can free msg
     ssize_t received = recv(client_fd, message, REQUEST_SIZE, 0);
+    printf("message:\n%s\n", message);
 
     if (received == -1) {
         perror("recv");

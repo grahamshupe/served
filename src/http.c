@@ -125,6 +125,9 @@ size_t memcspn(const char* str, const char* reject, size_t str_size) {
 }
 
 int req_parse(char* message, struct request* req, size_t msg_size) {
+    req->headers = NULL;
+    req->target = NULL;
+    req->body = NULL;
     int status = 0;
     if ((status = _req_parse_start(&message, &msg_size, req)) != 200)
         return status;

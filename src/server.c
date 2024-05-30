@@ -10,7 +10,7 @@
 
 #define PORT "9015"
 #define QUEUE_SIZE 64
-#define ROOT_PATH "root"
+#define ROOT_PATH "root"  // DANGER: adjust malloc in handle_get if changing
 #define BODY_SIZE 32768
 
 
@@ -21,7 +21,7 @@ int get_socket() {
 
     // Set up hints:
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
+    hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
@@ -84,13 +84,15 @@ int get_socket() {
 
 // Handles a GET method request.
 int handle_get(struct response* resp, struct request* req) {
+    int status = 200;
     FILE* file = NULL;
 
     // Try to get file:
     char* path = NULL;
     if (strcmp(req->target, "/") == 0) {
         path = malloc(16);
-        strcpy(path, "root/index.html");
+        strcpy(path, ROOT_PATH);
+        strcat(path, "/index.html");
     } else {
         path = malloc(strlen(req->target) + strlen(ROOT_PATH));
         strcpy(path, ROOT_PATH);
@@ -99,7 +101,13 @@ int handle_get(struct response* resp, struct request* req) {
 
     file = fopen(path, "r");
     if (file == NULL) {
-        return 404;
+        // Not found, so send the 404 file:
+        free(path);
+        path = malloc(14);
+        strcpy(path, ROOT_PATH);
+        strcat(path, "/404.html");
+        file = fopen(path, "r");
+        status = 404;
     }
 
     // Get mime type:
@@ -110,7 +118,7 @@ int handle_get(struct response* resp, struct request* req) {
     else if (strcmp(ext, "js") == 0)
         strcpy(mime, "text/javascript");
     else if (strcmp(ext, "txt") == 0)
-        strcpy(mime, "text/plain");
+        strcpy(mime, "text/plain; charset=utf-8");
     else
         return 500;
     free(path);
@@ -119,14 +127,14 @@ int handle_get(struct response* resp, struct request* req) {
     resp->body = malloc(BODY_SIZE);
     int size = fread(resp->body, 1, BODY_SIZE, file);
     resp->body[size] = '\0';
+    fclose(file);
 
     char value[10];
     snprintf(value, 10, "%d", size);
     resp_add_header(resp, "Content-Length", value);
     resp_add_header(resp, "Content-Type", mime);
-    fclose(file);
 
-    return 200;
+    return status;
 }
 
 int handle_post(struct response* resp, struct request* req) {
@@ -143,6 +151,18 @@ int handle_post(struct response* resp, struct request* req) {
         fwrite("\n", 1, 1, dest);
         fclose(dest);
         resp_add_header(resp, "Location", "/responses.txt");
+
+        dest = fopen("root/responses.txt", "r");
+        resp->body = malloc(BODY_SIZE);
+        int size = fread(resp->body, 1, BODY_SIZE, dest);
+        resp->body[size] = '\0';
+        fclose(dest);
+
+        char value[10];
+        snprintf(value, 10, "%d", size);
+        resp_add_header(resp, "Content-Length", value);
+        resp_add_header(resp, "Content-Type", "text/plain; charset=utf-8");
+
         return 303;
     } else {
         return 501;
@@ -192,7 +212,7 @@ void handle_connection(int client_fd) {
 
     time_t t = time(NULL);
     struct tm time = *localtime(&t);
-    printf("%d:%d:%d (%d): responding %d, sent %d bytes",
+    printf("%d:%d:%d (%d): responding %d, sent %d bytes\n",
         time.tm_hour, time.tm_min, time.tm_sec, getpid(), resp.status, sent);
 
     req_free(&req);

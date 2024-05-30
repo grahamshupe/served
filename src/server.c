@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "http.h"
 
 #define PORT "9015"
@@ -187,9 +188,15 @@ void handle_connection(int client_fd) {
     char resp_msg[BODY_SIZE];
     int resp_size = resp_to_str(&resp, resp_msg);
     //printf("response:\n%s\n", resp_msg);
-    send(client_fd, resp_msg, resp_size, 0);
+    int sent = send(client_fd, resp_msg, resp_size, 0);
+
+    time_t t = time(NULL);
+    struct tm time = *localtime(&t);
+    printf("%d:%d:%d (%d): responding %d, sent %d bytes",
+        time.tm_hour, time.tm_min, time.tm_sec, getpid(), resp.status, sent);
 
     req_free(&req);
+    resp_free(&resp);
     free(msg_origin);
     msg_origin, message = NULL;
 }
@@ -212,7 +219,11 @@ int main(int argc, char* argv[]) {
         }
         if (pid == 0) {
             // child:
-            printf("Served: child handling a connection on fd %d\n", client_fd);
+            time_t t = time(NULL);
+            struct tm time = *localtime(&t);
+            printf("%d:%d:%d (%d): Handling connection on fd %d\n",
+                time.tm_hour, time.tm_min, time.tm_sec, getpid(), client_fd);
+            //printf("Served: child handling a connection on fd %d\n", client_fd);
             handle_connection(client_fd);
             close(client_fd);
             return 0;

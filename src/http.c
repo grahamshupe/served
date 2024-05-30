@@ -192,6 +192,9 @@ void resp_change_status(struct response* resp, int status) {
         case 200:
             strcpy(resp->reason, "OK");
             break;
+        case 303:
+            strcpy(resp->reason, "See Other");
+            break;
         case 400:
             strcpy(resp->reason, "Bad Request");
             break;

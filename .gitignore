@@ -1,0 +1,6 @@
+# Compiled sources
+*.o
+*.obj
+
+# Executables
+*.out

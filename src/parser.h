@@ -1,5 +1,5 @@
-#ifndef HTTP_H_
-#define HTTP_H_
+#ifndef PARSER_H_
+#define PARSER_H_
 
 #define REQUEST_SIZE 16384
 
@@ -31,12 +31,6 @@ struct response {
     char* body;
 };
 
-
-/*
-Gets the length of STR to the first occurence of any character in REJECT.
-Unlike strcspn(), this only reads a max of SIZE bytes.
-*/
-size_t memcspn(const char* str, const char* reject, size_t str_size);
 
 /*
 Parses a HTTP message into a HTTP request.

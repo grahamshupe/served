@@ -1,5 +1,5 @@
 /*
-Functions for creating and modifying HTTP requests and responses.
+Functions for parsing and modifying HTTP responses and requests
 
 TODO:
 - _req_parse_headers() should recognize multiple field lines (RFC 9110:5.2)
@@ -10,21 +10,14 @@ TODO:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <time.h>
-#include "http.h"
+#include "parser.h"
+#include "util.h"
 
 
 /*
  * Private Functions *
 */
-
-// Converts the given string to lowercase
-void _str_tolower(char* str, size_t size) {
-    for (size_t i = 0; i < size; i++) {
-        str[i] = tolower(str[i]);
-    }
-}
 
 int _req_parse_start(char** message, size_t* size, struct request* req) {
     // Get method:
@@ -96,7 +89,7 @@ int _req_parse_headers(char** message, size_t* size, struct request* req) {
         header->name = malloc(name_size + 1);
         strncpy(header->name, *message, name_size);
         header->name[name_size] = '\0';
-        _str_tolower(header->name, name_size);
+        str_tolower(header->name, name_size);
         *message += name_size + 1;
 
         // Get field value:
@@ -107,7 +100,7 @@ int _req_parse_headers(char** message, size_t* size, struct request* req) {
         header->value = malloc(val_size + 1);
         strncpy(header->value, *message, val_size);
         header->value[val_size] = '\0';
-        _str_tolower(header->value, val_size);
+        str_tolower(header->value, val_size);
         *message += line_size + 2 - (name_size + 1 + ows);
         *size -= line_size + 2;
     }
@@ -120,19 +113,6 @@ int _req_parse_headers(char** message, size_t* size, struct request* req) {
 /*
  * Public Functions *
 */
-
-size_t memcspn(const char* str, const char* reject, size_t str_size) {
-    size_t count = 0;
-    size_t reject_len = strlen(reject);
-    for (; count < str_size; count++) {
-        for (size_t i = 0; i < reject_len; i++) {
-            if (reject[i] == str[count]) {
-                return count;
-            }
-        }
-    }
-    return count;
-}
 
 int req_parse(char* message, struct request* req, size_t msg_size) {
     req->headers = NULL;

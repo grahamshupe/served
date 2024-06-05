@@ -1,27 +1,5 @@
-#ifndef PARSER_H_
-#define PARSER_H_
-
-#define REQUEST_SIZE 16384
-
-typedef enum {
-    GET,
-    HEAD,
-    POST
-} method_t;
-
-struct header {
-    char* name;
-    char* value;
-    struct header* next;
-};
-
-struct request {
-    method_t method;
-    char* target;
-    char protocol[9];
-    struct header* headers;
-    char* body;
-};
+#ifndef RESPONSE_H_
+#define RESPONSE_H_
 
 struct response {
     char protocol[9];
@@ -30,19 +8,6 @@ struct response {
     struct header* headers;
     char* body;
 };
-
-
-/*
-Parses a HTTP message into a HTTP request.
-On success, REQ is filled and 200 is returned.
-On failure, the HTTP status code of the error is returned.
-*/
-int req_parse(char* message,  struct request* req, size_t msg_size);
-
-/*
-Free all malloc'd members in REQ.
-*/
-void req_free(struct request* req);
 
 /*
 Fills the members of the given HTTP response.
@@ -60,12 +25,6 @@ Adds a new header to RESP with the given NAME and VALUE.
 */
 void resp_add_header(struct response* resp, const char* name, 
                     const char* value);
-
-/*
-Returns the value of the header in REQ with the given NAME,
-or NULL if not found.
-*/
-char* req_get_header(struct request* req, const char* name);
 
 /*
 Converts the given response into a string, ready to be sent as a HTTP message.

@@ -1,6 +1,12 @@
 #ifndef PARSE_H_
 #define PARSE_H_
 
+struct header {
+    char* name;
+    char* value;
+    struct header* next;
+};
+
 /*
 Converts the first SIZE characters of STR to lowercase
 */

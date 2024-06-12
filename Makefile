@@ -5,10 +5,10 @@ CFLAGS=-I $(SRC)
 ODIR=obj
 TDIR=test
 
-_DEPS = parser.h util.h
+_DEPS = util.h request.h response.h
 DEPS = $(patsubst %,$(SRC)/%,$(_DEPS))
 
-_OBJS = server.o parser.o util.o
+_OBJS = server.o util.o request.o response.o
 OBJS = $(patsubst %,$(ODIR)/%,$(_OBJS))
 
 $(ODIR)/%.o: $(SRC)/%.c $(DEPS)

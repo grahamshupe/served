@@ -6,15 +6,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "http.h"
+#include "response.h"
+#include "request.h"
+#include "util.h"
 
 #define PORT "9015"
 #define QUEUE_SIZE 64
-#define ROOT_PATH "root"  // DANGER: adjust malloc in handle_get if changing
-#define BODY_SIZE 32768
+#define LOGFILE stdout
 
 
-// Gets a listening socket for the server.
+// Prints a message to the file defined as LOGFILE
+void putlog(const char* msg) {
+    time_t t = time(NULL);
+    struct tm time = *localtime(&t);
+
+    fprintf(LOGFILE, "%02d:%02d:%02d (%d): %s\n",
+        time.tm_hour, time.tm_min, time.tm_sec, getpid(), msg);
+}
+
+// Gets a listening socket for the server, returning its file descriptor.
 int get_socket() {
     struct addrinfo hints;
     struct addrinfo* addrlist;
@@ -82,96 +92,9 @@ int get_socket() {
     return sock_fd;
 }
 
-// Handles a GET method request.
-int handle_get(struct response* resp, struct request* req) {
-    int status = 200;
-    FILE* file = NULL;
-
-    // Try to get file:
-    char* path = NULL;
-    if (strcmp(req->target, "/") == 0) {
-        path = malloc(16);
-        strcpy(path, ROOT_PATH);
-        strcat(path, "/index.html");
-    } else {
-        path = malloc(strlen(req->target) + strlen(ROOT_PATH));
-        strcpy(path, ROOT_PATH);
-        strcat(path, req->target);
-    }
-
-    file = fopen(path, "r");
-    if (file == NULL) {
-        // Not found, so send the 404 file:
-        free(path);
-        path = malloc(14);
-        strcpy(path, ROOT_PATH);
-        strcat(path, "/404.html");
-        file = fopen(path, "r");
-        status = 404;
-    }
-
-    // Get mime type:
-    char mime[64];
-    char* ext = strrchr(path, '.') + 1;
-    if (strcmp(ext, "html") == 0)
-        strcpy(mime, "text/html; charset=utf-8");
-    else if (strcmp(ext, "js") == 0)
-        strcpy(mime, "text/javascript");
-    else if (strcmp(ext, "txt") == 0)
-        strcpy(mime, "text/plain; charset=utf-8");
-    else
-        return 500;
-    free(path);
-    
-    // Fill out the response:
-    resp->body = malloc(BODY_SIZE);
-    int size = fread(resp->body, 1, BODY_SIZE, file);
-    resp->body[size] = '\0';
-    fclose(file);
-
-    char value[10];
-    snprintf(value, 10, "%d", size);
-    resp_add_header(resp, "Content-Length", value);
-    resp_add_header(resp, "Content-Type", mime);
-
-    return status;
-}
-
-int handle_post(struct response* resp, struct request* req) {
-    FILE* dest = NULL;
-    char* type = req_get_header(req, "content-type");
-
-    if (type == NULL)
-        return 400;
-    if (strcmp(type, "application/x-www-form-urlencoded") == 0) {
-        int length = atoi(req_get_header(req, "content-length")) - 7;
-        char* answer = req->body + 7;
-        dest = fopen("root/responses.txt", "a");
-        fwrite(answer, 1, length, dest);
-        fwrite("\n", 1, 1, dest);
-        fclose(dest);
-        resp_add_header(resp, "Location", "/responses.txt");
-
-        dest = fopen("root/responses.txt", "r");
-        resp->body = malloc(BODY_SIZE);
-        int size = fread(resp->body, 1, BODY_SIZE, dest);
-        resp->body[size] = '\0';
-        fclose(dest);
-
-        char value[10];
-        snprintf(value, 10, "%d", size);
-        resp_add_header(resp, "Content-Length", value);
-        resp_add_header(resp, "Content-Type", "text/plain; charset=utf-8");
-
-        return 303;
-    } else {
-        return 501;
-    }
-}
-
 // Handles a http request from a client.
 // client_fd must be an open socket to connect to.
-void handle_connection(int client_fd) {
+void handle_connection(int client_fd, const char* root_path) {
     char* message = malloc(REQUEST_SIZE);
     char* msg_origin = message;  // keep track of start so we can free msg
     ssize_t received = recv(client_fd, message, REQUEST_SIZE, 0);
@@ -193,10 +116,14 @@ void handle_connection(int client_fd) {
     } else {
         switch (req.method) {
             case GET:
-                resp_status = handle_get(&resp, &req);
+                resp_status = handle_get(&resp, &req, root_path);
                 break;
             case POST:
-                resp_status = handle_post(&resp, &req);
+                // right now, just deny all POST requests.
+                // POST is functional, but since there is nothing to POST,
+                // better to just deny it for security.
+                resp_status = 403;
+                //resp_status = handle_post(&resp, &req);
                 break;
             case HEAD:
             default:
@@ -210,10 +137,9 @@ void handle_connection(int client_fd) {
     //printf("response:\n%s\n", resp_msg);
     int sent = send(client_fd, resp_msg, resp_size, 0);
 
-    time_t t = time(NULL);
-    struct tm time = *localtime(&t);
-    printf("%d:%d:%d (%d): responding %d, sent %d bytes\n",
-        time.tm_hour, time.tm_min, time.tm_sec, getpid(), resp.status, sent);
+    char log_msg[47];
+    snprintf(log_msg, 47, "Responding %d, sent %d bytes", resp.status, sent);
+    putlog(log_msg);
 
     req_free(&req);
     resp_free(&resp);
@@ -223,6 +149,23 @@ void handle_connection(int client_fd) {
 
 
 int main(int argc, char* argv[]) {
+    char* root_path = NULL;
+
+    int opt = -1;
+    while ((opt = getopt(argc, argv, "r:")) != -1) {
+        switch (opt) {
+            case 'r':
+                root_path = strdup(optarg);
+                break;
+            default:
+                printf("Invalid argument '%c'\n", opt);
+                return -1;
+        }
+    }
+
+    if (root_path == NULL)
+        root_path = strdup("test/root");
+
     puts("Served: setting up listening socket");
     int sock_fd = get_socket();
 
@@ -239,17 +182,16 @@ int main(int argc, char* argv[]) {
         }
         if (pid == 0) {
             // child:
-            time_t t = time(NULL);
-            struct tm time = *localtime(&t);
-            printf("%d:%d:%d (%d): Handling connection on fd %d\n",
-                time.tm_hour, time.tm_min, time.tm_sec, getpid(), client_fd);
-            //printf("Served: child handling a connection on fd %d\n", client_fd);
-            handle_connection(client_fd);
+            char msg[41];
+            snprintf(msg, 41, "Handling connection on socket %d", client_fd);
+            putlog(msg);
+
+            handle_connection(client_fd, root_path);
             close(client_fd);
             return 0;
         }
     }
 
-
+    free(root_path);  // unreachable but whatever
     return 0;
 }

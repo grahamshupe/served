@@ -9,20 +9,12 @@
 #include "response.h"
 #include "request.h"
 #include "util.h"
+#include "zf_log.h"
 
 #define PORT "9015"
 #define QUEUE_SIZE 64
 #define LOGFILE stdout
 
-
-// Prints a message to the file defined as LOGFILE
-void putlog(const char* msg) {
-    time_t t = time(NULL);
-    struct tm time = *localtime(&t);
-
-    fprintf(LOGFILE, "%02d:%02d:%02d (%d): %s\n",
-        time.tm_hour, time.tm_min, time.tm_sec, getpid(), msg);
-}
 
 // Gets a listening socket for the server, returning its file descriptor.
 int get_socket() {
@@ -137,9 +129,7 @@ void handle_connection(int client_fd, const char* root_path) {
     //printf("response:\n%s\n", resp_msg);
     int sent = send(client_fd, resp_msg, resp_size, 0);
 
-    char log_msg[47];
-    snprintf(log_msg, 47, "Responding %d, sent %d bytes", resp.status, sent);
-    putlog(log_msg);
+    ZF_LOGI("Responded %d to connection attempt", resp.status);
 
     req_free(&req);
     resp_free(&resp);
@@ -182,9 +172,7 @@ int main(int argc, char* argv[]) {
         }
         if (pid == 0) {
             // child:
-            char msg[41];
-            snprintf(msg, 41, "Handling connection on socket %d", client_fd);
-            putlog(msg);
+            ZF_LOGD("Handling connection on socket %d", client_fd);
 
             handle_connection(client_fd, root_path);
             close(client_fd);

@@ -6,14 +6,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
 #include "response.h"
 #include "request.h"
+#include "handler.h"
 #include "util.h"
 #include "zf_log.h"
 
 #define PORT "9015"
 #define QUEUE_SIZE 64
-#define LOGFILE stdout
 
 
 // Gets a listening socket for the server, returning its file descriptor.
@@ -84,58 +85,6 @@ int get_socket() {
     return sock_fd;
 }
 
-// Handles a http request from a client.
-// client_fd must be an open socket to connect to.
-void handle_connection(int client_fd, const char* root_path) {
-    char* message = malloc(REQUEST_SIZE);
-    char* msg_origin = message;  // keep track of start so we can free msg
-    ssize_t received = recv(client_fd, message, REQUEST_SIZE, 0);
-
-    if (received == -1) {
-        perror("recv");
-        free(message);
-        return;
-    }
-
-    struct request req;
-    int parse_status = req_parse(message, &req, received);
-    struct response resp;
-    resp_new(&resp);
-    int resp_status = 500;
-
-    if (parse_status != 200) {
-        resp_status = parse_status;
-    } else {
-        switch (req.method) {
-            case GET:
-                resp_status = handle_get(&resp, &req, root_path);
-                break;
-            case POST:
-                // right now, just deny all POST requests.
-                // POST is functional, but since there is nothing to POST,
-                // better to just deny it for security.
-                resp_status = 403;
-                //resp_status = handle_post(&resp, &req);
-                break;
-            case HEAD:
-            default:
-                resp_status = 501;
-        }
-    }
-
-    resp_change_status(&resp, resp_status);
-    char resp_msg[BODY_SIZE];
-    int resp_size = resp_to_str(&resp, resp_msg);
-    //printf("response:\n%s\n", resp_msg);
-    int sent = send(client_fd, resp_msg, resp_size, 0);
-
-    ZF_LOGI("Responded %d to connection attempt", resp.status);
-
-    req_free(&req);
-    resp_free(&resp);
-    free(msg_origin);
-    msg_origin, message = NULL;
-}
 
 
 int main(int argc, char* argv[]) {

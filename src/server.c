@@ -5,7 +5,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <fcntl.h>
+#include <sys/epoll.h>
 
 #include "response.h"
 #include "request.h"
@@ -25,7 +26,7 @@ int get_socket() {
     // Set up hints:
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_socktype = SOCK_STREAM | SOCK_NONBLOCK;
     hints.ai_flags = AI_PASSIVE;
 
     // Get a list of available interfaces:
@@ -82,6 +83,19 @@ int get_socket() {
         return -1;
     }
 
+    // // Set non-blocking:
+    // int flags;
+    // if ((flags = fcntl(sock_fd, F_GETFL)) == -1) {
+    //     perror("fcntl");
+    //     close(sock_fd);
+    //     return -1;
+    // }
+    // if (fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    //     perror("fcntl");
+    //     close(sock_fd);
+    //     return -1;
+    // }
+
     return sock_fd;
 }
 
@@ -108,9 +122,18 @@ int main(int argc, char* argv[]) {
     puts("Served: setting up listening socket");
     int sock_fd = get_socket();
 
+    int epoll_fd = epoll_create1(0);  // CLOSE THIS
+    if (epoll_fd == -1) {
+        perror("epoll_create1");
+        return -1;
+    }
+
+    
+
+
+
     printf("Served: waiting for connections on port %s...\n", PORT);
     while (1) {
-        // TODO: print out client address given by accept()
         int client_fd = accept(sock_fd, NULL, NULL);
 
         pid_t pid = 0;

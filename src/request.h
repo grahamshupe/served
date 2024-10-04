@@ -1,7 +1,7 @@
 #ifndef REQUEST_H_
 #define REQUEST_H_
 
-#define REQUEST_SIZE 16384
+#define REQUEST_SIZE 8192
 
 typedef enum {
     GET,
@@ -9,13 +9,13 @@ typedef enum {
     POST
 } method_t;
 
-struct request {
+typedef struct request {
     method_t method;
     char* target;
     char protocol[9];
     struct header* headers;
     char* body;
-};
+} request_t;
 
 /*
 Parses a HTTP message into a HTTP request.

@@ -6,58 +6,58 @@ Functions for handling HTTP requests and gathering response data
 #include <stdlib.h>
 #include <string.h>
 
+#include "handler.h"
 #include "request.h"
 #include "response.h"
-#include "handler.h"
+#include "server.h"
 
 
 
-void handle_connection(int client_fd, const char* root_path) {
-    char* message = malloc(REQUEST_SIZE);
-    char* msg_origin = message;  // keep track of start so we can free msg
-    ssize_t received = recv(client_fd, message, REQUEST_SIZE, 0);
-    if (received == -1) {
-        perror("recv");
-        free(message);
-        return;
-    }
-    struct request req;
-    int parse_status = req_parse(message, &req, received);
-    struct response resp;
-    resp_new(&resp);
-    int resp_status = 500;
-    if (parse_status != 200) {
-        resp_status = parse_status;
-    } else {
-        switch (req.method) {
-            case GET:
-                resp_status = handle_get(&resp, &req, root_path);
-                break;
-            case POST:
-                // right now, just deny all POST requests.
-                // POST is functional, but since there is nothing to POST,
-                // better to just deny it for security.
-                resp_status = 403;
-                //resp_status = handle_post(&resp, &req);
-                break;
-            case HEAD:
-            default:
-                resp_status = 501;
+void handle_connection(conn_info_t* conn_info, const server_opts_t* opts) {
+    if (conn_info->state == IDLE) {
+        char* message = malloc(REQUEST_SIZE);
+        ssize_t received;
+        while ((received = read(conn_info->fd, message, REQUEST_SIZE)) != 0) {
+            
         }
+        struct request req;
+        int parse_status = req_parse(message, &req, received);
+        struct response resp;
+        resp_new(&resp);
+        int resp_status = 500;
+        if (parse_status != 200) {
+            resp_status = parse_status;
+        } else {
+            switch (req.method) {
+                case GET:
+                    resp_status = handle_get(&resp, &req, opts->root_path);
+                    break;
+                case POST:
+                    // right now, just deny all POST requests.
+                    // POST is functional, but since there is nothing to POST,
+                    // better to just deny it for security.
+                    resp_status = 403;
+                    //resp_status = handle_post(&resp, &req);
+                    break;
+                case HEAD:
+                default:
+                    resp_status = 501;
+            }
+        }
+        resp_change_status(&resp, resp_status);
+        char resp_msg[BODY_SIZE];
+        int resp_size = resp_to_str(&resp, resp_msg);
+        int sent = send(client_fd, resp_msg, resp_size, 0);
+        ZF_LOGI("Responded %d to connection attempt", resp.status);
+        req_free(&req);
+        resp_free(&resp);
+        free(message);
+        message = NULL;
     }
-    resp_change_status(&resp, resp_status);
-    char resp_msg[BODY_SIZE];
-    int resp_size = resp_to_str(&resp, resp_msg);
-    //printf("response:\n%s\n", resp_msg);
-    int sent = send(client_fd, resp_msg, resp_size, 0);
-    ZF_LOGI("Responded %d to connection attempt", resp.status);
-    req_free(&req);
-    resp_free(&resp);
-    free(msg_origin);
-    msg_origin, message = NULL;
+    
 }
 
-int handle_get(struct response* resp, struct request* req, 
+int http_get(struct response* resp, struct request* req, 
                 const char* root_path) {
     int status = 200;
     FILE* file = NULL;
@@ -112,7 +112,7 @@ int handle_get(struct response* resp, struct request* req,
     return status;
 }
 
-int handle_post(struct response* resp, struct request* req) {
+int http_post(struct response* resp, struct request* req) {
     FILE* dest = NULL;
     char* type = req_get_header(req, "content-type");
 

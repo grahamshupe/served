@@ -1,13 +1,15 @@
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/epoll.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <sys/epoll.h>
+#include <pthread.h>
 
+#include "server.h"
 #include "response.h"
 #include "request.h"
 #include "handler.h"
@@ -16,9 +18,32 @@
 
 #define PORT "9015"
 #define QUEUE_SIZE 64
+#define DEFAULT_THREAD_NUM 4
+#define MAX_EVENTS 64
 
+struct threadargs {
+    int epoll_fd;
+    int listener_fd;
+};
 
-// Gets a listening socket for the server, returning its file descriptor.
+/*
+Sets the given file descriptor, fd, to nonblocking
+*/
+void set_nonblocking(int fd) {
+    int flags;
+    if ((flags = fcntl(fd, F_GETFL)) == -1) {
+        perror("fcntl");
+        exit(EXIT_FAILURE);
+    }
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl");
+        exit(EXIT_FAILURE);
+    }
+}
+
+/*
+Gets a listening socket for the server, returning its file descriptor.
+*/
 int get_socket() {
     struct addrinfo hints;
     struct addrinfo* addrlist;
@@ -26,7 +51,7 @@ int get_socket() {
     // Set up hints:
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM | SOCK_NONBLOCK;
+    hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
     // Get a list of available interfaces:
@@ -83,26 +108,69 @@ int get_socket() {
         return -1;
     }
 
-    // // Set non-blocking:
-    // int flags;
-    // if ((flags = fcntl(sock_fd, F_GETFL)) == -1) {
-    //     perror("fcntl");
-    //     close(sock_fd);
-    //     return -1;
-    // }
-    // if (fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    //     perror("fcntl");
-    //     close(sock_fd);
-    //     return -1;
-    // }
+    set_nonblocking(sock_fd);
 
     return sock_fd;
 }
 
+/*
+Listens to the given epoll instance.
+*/
+void* epoll_listen(struct threadargs* targs) {
+    struct epoll_event* events = malloc(sizeof(struct epoll_event) * MAX_EVENTS);
+    int epoll_fd = targs->epoll_fd;
+    int listener_fd = targs->listener_fd;
+    struct epoll_event ev;
+
+    int nfds = 0;
+    while (1) {
+        nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+        if (nfds == -1) {
+            perror("epoll_wait");
+            exit(EXIT_FAILURE);
+        }
+
+        int conn_fd;
+        for (int n = 0; n < nfds; n++) {
+            if (events[n].data.fd == listener_fd) {
+                if ((conn_fd = accept(listener_fd, NULL, NULL)) == -1) {
+                    perror("accept");
+                    exit(EXIT_FAILURE);
+                }
+                set_nonblocking(conn_fd);
+
+                conn_info_t* info = malloc(sizeof(conn_info_t));
+                info->fd = conn_fd;
+                info->state = IDLE;
+                info->req = NULL;
+
+                ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
+                ev.data.ptr = info;
+                
+                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn_fd, &ev) == -1) {
+                    perror("epoll_ctl");
+                    continue;
+                }
+            } else {
+                conn_info_t* info = events[n].data.ptr;
+                if (info->state == IDLE) {
+                    // rearm and leave
+                } else if (info->state == READING) {
+
+                } else {
+                    // shutdown connection and its epoll stuff
+                }
+
+            }
+        }
+
+    }
+}
 
 
 int main(int argc, char* argv[]) {
     char* root_path = NULL;
+    int num_threads = DEFAULT_THREAD_NUM;  // todo: add this to optargs
 
     int opt = -1;
     while ((opt = getopt(argc, argv, "r:")) != -1) {
@@ -128,7 +196,25 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    
+    struct epoll_event epoll_ev;
+    epoll_ev.events = EPOLLIN | EPOLLET;
+    epoll_ev.data.fd = sock_fd;
+
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock_fd, &epoll_ev) == -1) {
+        perror("epoll_ctl");
+        return -1;
+    }
+
+    pthread_t threads[num_threads];
+    struct threadargs targs;
+    targs.epoll_fd = epoll_fd;
+    targs.listener_fd = sock_fd;
+    for (int i = 0; i < num_threads; i++) {
+        if(pthread_create(&threads[i], NULL, epoll_listen, &targs) == -1) {
+            // error
+        }
+    }
+
 
 
 

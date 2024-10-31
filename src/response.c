@@ -12,12 +12,10 @@ Functions for modifying and creating response structs.
 #include "util.h"
 
 
-void resp_new(struct response* resp) {
+response_t* resp_new(int status) {
+    response_t* resp = calloc(1, sizeof(response_t));
     strcpy(resp->protocol, "HTTP/1.1");
-    resp->headers = NULL;
-    resp->body = NULL;
-    resp->status = 0;
-    resp->reason[0] = '\0';
+    resp_change_status(resp, status);
 
     // Add general headers:
     resp_add_header(resp, "Server", "Served");
@@ -26,6 +24,8 @@ void resp_new(struct response* resp) {
     time[24] = '\0';
     resp_add_header(resp, "Date", time);
     resp_add_header(resp, "Connection", "close");
+
+    return resp;
 }
 
 void resp_change_status(struct response* resp, int status) {
@@ -47,11 +47,17 @@ void resp_change_status(struct response* resp, int status) {
         case 414:
             strcpy(resp->reason, "URI Too Long");
             break;
+        case 431:
+            strcpy(resp->reason, "Request Header Fields Too Large");
+            break;
         case 500:
             strcpy(resp->reason, "Internal Server Error");
             break;
         case 501:
             strcpy(resp->reason, "Not Implemented");
+            break;
+        case 505:
+            strcpy(resp->reason, "HTTP Version Not Supported");
             break;
 
         default:
@@ -60,8 +66,7 @@ void resp_change_status(struct response* resp, int status) {
     }
 }
 
-void resp_add_header(struct response* resp, const char* name,
-                    const char* value) {
+void resp_add_header(struct response* resp, const char* name, const char* value) {
     struct header* new = malloc(sizeof(struct header));
 
     new->name = malloc(strlen(name) + 1);
@@ -75,8 +80,7 @@ void resp_add_header(struct response* resp, const char* name,
 
 int resp_to_str(struct response* resp, char* str) {
     // Status line:
-    int end = sprintf(str, "%s %i %s\r\n", resp->protocol, resp->status,
-                     resp->reason);
+    int end = sprintf(str, "%s %i %s\r\n", resp->protocol, resp->status, resp->reason);
     // Headers:
     struct header* header = resp->headers;
     while (header != NULL) {
@@ -85,16 +89,10 @@ int resp_to_str(struct response* resp, char* str) {
         header = header->next;
     }
     end += sprintf(str + end, "\r\n");
-    // Body:
-    if (resp->body != NULL)
-        end += sprintf(str + end, "%s", resp->body);
     return end;
 }
 
 void resp_free(struct response* resp) {
-    free(resp->body);
-    resp->body = NULL;
-    
     struct header* runner = resp->headers;
     struct header* next;
     while (runner != NULL) {
@@ -104,6 +102,6 @@ void resp_free(struct response* resp) {
         free(runner);
         runner = next;
     }
-    resp->headers = NULL;
+    free(resp);
 }
 

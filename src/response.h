@@ -3,21 +3,18 @@
 
 #include "request.h"
 
-#define BODY_SIZE 32768
-
 typedef struct response {
     char protocol[9];
     int status;
     char reason[32];
     struct header* headers;
-    char* body;
 } response_t;
 
 /*
-Fills the members of the given HTTP response.
+Creates a new response struct and initializes it with the given STATUS.
 Basic headers (date and server info) will be added.
 */
-void resp_new(struct response* resp);
+response_t* resp_new(int status);
 
 /*
 Changes the status and reason fields of RESP, given STATUS.
@@ -32,11 +29,12 @@ void resp_add_header(struct response* resp, const char* name,
 
 /*
 Converts the given response into a string, ready to be sent as a HTTP message.
+The body must be sent separately, preferably using sendfile(2).
 */
 int resp_to_str(struct response* resp, char* str);
 
 /*
-Frees all malloc'd members in RESP.
+Frees all malloc'd members in RESP, including RESP itself.
 */
 void resp_free(struct response* resp);
 

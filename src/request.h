@@ -1,7 +1,8 @@
 #ifndef REQUEST_H_
 #define REQUEST_H_
 
-#define REQUEST_SIZE 8192
+#define REQUEST_SIZE 4096  // Max total size of the request headers and fields
+#define MAX_TARGET_SIZE 512  // Max size of the request-line target
 
 typedef enum {
     GET,
@@ -12,17 +13,22 @@ typedef enum {
 typedef struct request {
     method_t method;
     char* target;
-    char protocol[9];
+    char* protocol;
     struct header* headers;
     char* body;
+    char* raw_message;
+    ssize_t msg_size;
+    ssize_t bytes_read;  // The number of bytes from raw_message that have been processed
 } request_t;
 
 /*
 Parses a HTTP message into a HTTP request.
-On success, REQ is filled and 200 is returned.
-On failure, the HTTP status code of the error is returned.
+If REQ is null, a new struct will be malloc'd and returned, otherwise REQ must be a partially
+complete or zero'd out struct, which will also be returned.
+STATUS will be filled with a HTTP status code representing whether parsing was successful,
+or 0 if the message is grammatically correct but incomplete.
 */
-int req_parse(char* message,  struct request* req, size_t msg_size);
+request_t* req_parse(char* message, request_t* req, ssize_t msg_size, int* status);
 
 /*
 Free all malloc'd members in REQ.

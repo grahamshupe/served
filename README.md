@@ -22,9 +22,10 @@ Run the Served file to start the standalone server:
 ./served [arguments]
 ```
 
-Served supports several arguments at startup, which can help fine tune the server:
+Served supports several arguments at startup, which can help fine-tune the server:
 
 * -r [path] specifies the root directory which Served will serve files from. If not specified, this defaults to test/root/
+* -t [number] specifies the size of the thread pool Served will utilize. If not specified, this defaults to 4.
 
 ## Goals
 
@@ -33,11 +34,11 @@ https://curl.se/libcurl/). Instead, this is a passion project created primarily 
 
 That said, the overarching goals of this project are as follows:
 
-1. Create a functional, modular program capable of sending and recieving GET requests.
-2. Achieve performance and stess tolerance comparable to industry-leading server software such as nginx.
+1. Create a functional, modular program capable of sending and receiving GET requests.
+2. Achieve performance and stress tolerance comparable to industry-leading server software such as nginx.
 3. Handle sockets at a low level, using system calls such as epoll to increase performance.
-4. Strictly adhere to internet standards as defined in the IETF's [RFC 9112](https://datatracker.ietf.org/doc/html/rfc9112) and [RFC 9110](https://datatracker.ietf.org/doc/html/rfc9110)
+4. Strictly adhere to internet standards as defined in the IETF's [RFC 9112](https://datatracker.ietf.org/doc/html/rfc9112) and [RFC 9110](https://datatracker.ietf.org/doc/html/rfc9110).
 
-Considering the scope of this project, I do not include safety or security as a goal. This is not to say that security was not considered while I made Served. In fact, many parts of the code are constructed to meticulously avoid buffer overflows and other security flaws. Rather, I simply cannot guarantee that Served will provide even a reason amount of security against attacks, and I do not expect it to.
+Considering the scope of this project, I do not include safety or security as a goal. This is not to say that security was not considered while making Served. In fact, many parts of the code were carefully constructed to avoid buffer overflows and other security flaws. Rather, I simply cannot guarantee that Served will hold up against any attack, and you should never directly expose it to the internet.
 
 

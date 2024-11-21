@@ -147,6 +147,7 @@ request_t* req_parse(char* message, request_t* req, ssize_t msg_size, int* statu
     if (req == NULL) {
         req = calloc(1, sizeof(request_t));
         req->raw_message = message;
+        req->msg_size = msg_size;
     }
 
     *status = _req_parse_start(req);
@@ -161,7 +162,11 @@ request_t* req_parse(char* message, request_t* req, ssize_t msg_size, int* statu
     *status = _req_parse_headers(req);
     if (*status != 200) {
         return req;
-    }  
+    }
+
+    req->msg_size = req->bytes_read;
+    req->raw_message = malloc(req->msg_size);
+    strncpy(req->raw_message, message, req->msg_size);
 
     // Parse body:
     // req->body = malloc(msg_size + 1);

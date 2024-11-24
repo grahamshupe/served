@@ -5,141 +5,247 @@ Functions for handling HTTP requests and gathering response data
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/sendfile.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
 
 #include "handler.h"
 #include "request.h"
 #include "response.h"
 #include "server.h"
+#include "zf_log.h"
 
+#define INTEGER_STRING_LEN 12
+#define DEFAULT_BODY "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>Error</title></head><body>%s</body></html>"
 
+int handle_read_event(conn_info_t* conn_info) {
 
-void handle_connection(conn_info_t* conn_info, const server_opts_t* opts) {
-    if (conn_info->state == IDLE) {
-        char* message = malloc(REQUEST_SIZE);
-        ssize_t received;
-        while ((received = read(conn_info->fd, message, REQUEST_SIZE)) != 0) {
-            
-        }
-        struct request req;
-        int parse_status = req_parse(message, &req, received);
-        struct response resp;
-        resp_new(&resp);
-        int resp_status = 500;
-        if (parse_status != 200) {
-            resp_status = parse_status;
-        } else {
-            switch (req.method) {
-                case GET:
-                    resp_status = handle_get(&resp, &req, opts->root_path);
-                    break;
-                case POST:
-                    // right now, just deny all POST requests.
-                    // POST is functional, but since there is nothing to POST,
-                    // better to just deny it for security.
-                    resp_status = 403;
-                    //resp_status = handle_post(&resp, &req);
-                    break;
-                case HEAD:
-                default:
-                    resp_status = 501;
+    char* message = malloc(REQUEST_SIZE);
+    ssize_t msg_size = conn_info->buffer_size;
+    ssize_t received;
+    int parse_status = -1;
+
+    while ((received = recv(conn_info->fd, message + msg_size, REQUEST_SIZE - msg_size, 0)) > 0) {
+        ssize_t msg_offset = 0;
+        while (msg_offset < received) {
+            msg_size = received - msg_offset;
+            conn_info->req = req_parse(message + msg_offset, conn_info->req, msg_size, &parse_status);
+            if (parse_status == 0) {
+                memmove(message, message + msg_offset, msg_size);
+                break;
             }
+
+            ssize_t bytes_read = conn_info->req->bytes_read;
+            msg_offset += bytes_read;
+
+            conn_info->resp = resp_new(parse_status);
+            handle_write_event(conn_info);
+
+            if (conn_info->state == WRITING) {
+                if (msg_offset < received) {
+                    // theres still another request waiting, so save it
+                    conn_info->msg_buffer = memmove(message, message + msg_offset, msg_size);
+                    conn_info->buffer_size = msg_size;
+                } else {
+                    free(message);
+                }
+                return 1;
+            }
+
+            req_free(conn_info->req);
+            conn_info->req = NULL;
+            resp_free(conn_info->resp);
+            conn_info->resp = NULL;
         }
-        resp_change_status(&resp, resp_status);
-        char resp_msg[BODY_SIZE];
-        int resp_size = resp_to_str(&resp, resp_msg);
-        int sent = send(client_fd, resp_msg, resp_size, 0);
-        ZF_LOGI("Responded %d to connection attempt", resp.status);
-        req_free(&req);
-        resp_free(&resp);
+    }
+
+    if (received == -1) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            // Unspecified error, panic
+            conn_info->state = ERR;
+            free(message);
+            return -1;
+        } else if (parse_status == 0) {
+            // Theres still an unfinished request, save the remaining message
+            conn_info->state = READING;
+            conn_info->msg_buffer = message;
+            conn_info->buffer_size = msg_size;
+        } else {
+            // No more requests on the socket
+            conn_info->state = IDLE;
+            free(message);
+        }
+        return 1;
+    } else {
+        // client has shut down the socket
         free(message);
-        message = NULL;
+        return 0;
     }
-    
 }
 
-int http_get(struct response* resp, struct request* req, 
-                const char* root_path) {
-    int status = 200;
-    FILE* file = NULL;
+int handle_write_event(conn_info_t* conn_info) {
+    response_t* resp = conn_info->resp;
+    request_t* req = conn_info->req;
+    struct stat stat;
+    if (conn_info->state != WRITING) {
+        // Get body information:
+        if (resp->status == 200 && (req->method == GET || req->method == HEAD)) {
+            char* filename = _get_file(req->target, resp);
+            if (fstat(resp->body_fd, &stat) == -1) {
+                ZF_LOGE("Could not retrieve information about file: error %d", errno);
+                close(resp->body_fd);
+                conn_info->state = ERR;
+                return -1;
+            }
 
-    // Try to get file:
-    char* path = NULL;
-    if (strcmp(req->target, "/") == 0) {
-        path = malloc(16);
-        strcpy(path, root_path);
-        strcat(path, "/index.html");
+            char filesize[INTEGER_STRING_LEN];
+            snprintf(filesize, INTEGER_STRING_LEN, "%d", stat.st_size);
+            resp_add_header(resp, "Content-Length", filesize);
+            resp_add_header(resp, "Content-Type", _get_mime(filename));
+        }
+    }
+
+    // Send the status-line and headers (i.e. the message)
+    if (resp->msg_size == 0 || resp->bytes_sent < resp->msg_size) {
+        char* resp_str = NULL;
+        int resp_len = resp_to_str(resp, &resp_str);
+        resp->msg_size = resp_len;
+
+        int sent;
+        while (resp->bytes_sent < resp_len) {
+            sent = send(conn_info->fd, resp_str + resp->bytes_sent, resp_len - resp->bytes_sent, 0);
+            if (sent == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                conn_info->state = WRITING;
+                return 1;
+            } else if (sent == -1) {
+                conn_info->state = ERR;
+                return -1;
+            }
+            resp->bytes_sent += sent;
+        }
+    }
+
+    // Send the body:
+    if (resp->body_fd > 0 && req->method != HEAD) {
+        if (fstat(resp->body_fd, &stat) == -1) {
+            ZF_LOGE("Could not retrieve information about file when sending body: error %d", errno);
+            conn_info->state = ERR;
+            return -1;
+        }
+        ssize_t sent;
+        off_t offset = 0;
+        while (resp->bytes_sent - resp->msg_size < stat.st_size) {
+            sent = sendfile(conn_info->fd, resp->body_fd, &offset, stat.st_size - offset);
+            if (sent == -1 && errno == EAGAIN) {
+                conn_info->state = WRITING;
+                return 1;
+            } else if (sent == -1) {
+                conn_info->state = ERR;
+                return -1;
+            }
+            resp->bytes_sent += sent;
+        }
+    } else if (resp->body_fd == -1 && req->method != HEAD) {
+        // Send a generic body message corresponding to the status reason
+        int len = strlen(DEFAULT_BODY) + strlen(resp->reason) - 2;
+        char* body = malloc(len);
+        snprintf(body, len, DEFAULT_BODY, resp->reason);
+        int sent = 0;
+
+        while (sent < len) {
+            errno = 0;
+            sent += send(conn_info->fd, body + sent, len - sent, 0);
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                conn_info->state = WRITING;
+                return 1;
+            } else if (errno != 0) {
+                conn_info->state = ERR;
+                return -1;
+            }
+            resp->bytes_sent = sent;
+        }
+    }
+
+    conn_info->state = IDLE;
+    req_free(req);
+    resp_free(resp);
+    return 1;
+}
+
+/*
+Opens the file specified by TARGET.
+The body_fd field in RESP will be changed to the open file descriptor, or -1 if nonexistant.
+On error, body_fd remains unchanged.
+Returns the santized file path of TARGET, or null on error. If the file does not exist,
+'404.html' will be returned and body_fd will be filled with it's file descriptor.
+*/
+static char* _get_file(const char* target, response_t* resp) {
+    int fd;
+    char* filename = target;
+
+    if (filename[0] != '/') {
+        ZF_LOGD("Client provided an invalid path: %s", filename);
+        resp_change_status(resp, 400);
+        return NULL;
     } else {
-        path = malloc(strlen(req->target) + strlen(root_path));
-        strcpy(path, root_path);
-        strcat(path, req->target);
+        filename++;
+    }
+    if (filename[0] == '\0')
+        filename = "index.html";
+
+    int root_fd = open(root_path, O_RDONLY | __O_PATH | O_DIRECTORY);
+    if (root_fd == -1) {
+        ZF_LOGE("Could not open root path: error %d", errno);
+        resp_change_status(resp, 500);
+        return NULL;
     }
 
-    file = fopen(path, "r");
-    if (file == NULL) {
-        // Not found, so send the 404 file:
-        free(path);
-        path = malloc(14);
-        strcpy(path, root_path);
-        strcat(path, "/404.html");
-        file = fopen(path, "r");
-        status = 404;
+    fd = openat(root_fd, filename, O_RDONLY);
+
+    if (fd == -1 && errno == EACCES) {
+        resp_change_status(resp, 404);
+        filename = "404.html";
+        if ((fd = openat(root_fd, filename, O_RDONLY)) == -1) {
+            close(root_fd);
+            return NULL;
+        }
+
+    } else if (fd == -1) {
+        ZF_LOGE("Could not open requested file: error %d", errno);
+        resp_change_status(resp, 500);
+        close(root_fd);
+        return NULL;
     }
 
-    // Get mime type:
-    char mime[64];
-    char* ext = strrchr(path, '.') + 1;
+    close(root_fd);
+    resp->body_fd = fd;
+    return filename;
+}
+
+/*
+Gets the mime type of the given FILENAME.
+Returns a string representation of the mime type.
+If FILENAME is null, the html mime type is returned.
+*/
+static char* _get_mime(const char* filename) {
+    if (filename == NULL)
+        return "text/html; charset=utf-8";
+    char* ext = strrchr(filename, '.');
+    if (ext == NULL)
+        return "application/octet-stream";
+    ext++;
+
     if (strcmp(ext, "html") == 0)
-        strcpy(mime, "text/html; charset=utf-8");
+        return "text/html; charset=utf-8";
     else if (strcmp(ext, "js") == 0)
-        strcpy(mime, "text/javascript");
+        return "text/javascript";
     else if (strcmp(ext, "txt") == 0)
-        strcpy(mime, "text/plain; charset=utf-8");
+        return "text/plain; charset=utf-8";
     else
-        return 500;
-    free(path);
-    
-    // Fill out the response:
-    resp->body = malloc(BODY_SIZE);
-    int size = fread(resp->body, 1, BODY_SIZE, file);
-    resp->body[size] = '\0';
-    fclose(file);
-
-    char value[10];
-    snprintf(value, 10, "%d", size);
-    resp_add_header(resp, "Content-Length", value);
-    resp_add_header(resp, "Content-Type", mime);
-
-    return status;
+        return "application/octet-stream";
 }
 
-int http_post(struct response* resp, struct request* req) {
-    FILE* dest = NULL;
-    char* type = req_get_header(req, "content-type");
-
-    if (type == NULL)
-        return 400;
-    if (strcmp(type, "application/x-www-form-urlencoded") == 0) {
-        int length = atoi(req_get_header(req, "content-length")) - 7;
-        char* answer = req->body + 7;
-        dest = fopen("root/responses.txt", "a");
-        fwrite(answer, 1, length, dest);
-        fwrite("\n", 1, 1, dest);
-        fclose(dest);
-        resp_add_header(resp, "Location", "/responses.txt");
-
-        dest = fopen("root/responses.txt", "r");
-        resp->body = malloc(BODY_SIZE);
-        int size = fread(resp->body, 1, BODY_SIZE, dest);
-        resp->body[size] = '\0';
-        fclose(dest);
-
-        char value[10];
-        snprintf(value, 10, "%d", size);
-        resp_add_header(resp, "Content-Length", value);
-        resp_add_header(resp, "Content-Type", "text/plain; charset=utf-8");
-
-        return 303;
-    } else {
-        return 501;
-    }
-}

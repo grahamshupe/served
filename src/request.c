@@ -152,10 +152,6 @@ request_t* req_parse(char* message, request_t* req, ssize_t msg_size, int* statu
 
     *status = _req_parse_start(req);
     if (*status != 200) {
-        if (*status == 0 && msg_size == req->bytes_read) {
-            // Header must be too big
-            *status = 431;
-        }
         return req;
     }
 
@@ -167,11 +163,6 @@ request_t* req_parse(char* message, request_t* req, ssize_t msg_size, int* statu
     req->msg_size = req->bytes_read;
     req->raw_message = malloc(req->msg_size);
     strncpy(req->raw_message, message, req->msg_size);
-
-    // Parse body:
-    // req->body = malloc(msg_size + 1);
-    // strncpy(req->body, message, msg_size);
-    // req->body[msg_size] = '\0';
 
     return 200;
 }
@@ -193,9 +184,11 @@ void req_free(struct request* req) {
         free(runner);
         runner = next;
     }
+
+    free(req);
 }
 
-char* req_get_header(struct request* req, const char* name) {
+char* req_get_header(request_t* req, const char* name) {
     struct header* runner = req->headers;
     while (runner != NULL) {
         if (strcmp(runner->name, name) == 0)

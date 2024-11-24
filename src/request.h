@@ -1,7 +1,7 @@
 #ifndef REQUEST_H_
 #define REQUEST_H_
 
-#define REQUEST_SIZE 4096  // Max total size of the request headers and fields
+#define REQUEST_SIZE 4096  // Max total size of the request, excluding the body
 #define MAX_TARGET_SIZE 512  // Max size of the request-line target
 
 typedef enum {
@@ -31,7 +31,7 @@ or 0 if the message is grammatically correct but incomplete.
 request_t* req_parse(char* message, request_t* req, ssize_t msg_size, int* status);
 
 /*
-Free all malloc'd members in REQ.
+Free all malloc'd members in REQ, including REQ itself
 */
 void req_free(struct request* req);
 

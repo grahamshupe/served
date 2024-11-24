@@ -28,7 +28,7 @@ response_t* resp_new(int status) {
     return resp;
 }
 
-void resp_change_status(struct response* resp, int status) {
+void resp_change_status(response_t* resp, int status) {
     resp->status = status;
     switch (status) {
         // When adding new messages, make sure they are under 32 bytes!
@@ -66,7 +66,7 @@ void resp_change_status(struct response* resp, int status) {
     }
 }
 
-void resp_add_header(struct response* resp, const char* name, const char* value) {
+void resp_add_header(response_t* resp, const char* name, const char* value) {
     struct header* new = malloc(sizeof(struct header));
 
     new->name = malloc(strlen(name) + 1);
@@ -78,21 +78,30 @@ void resp_add_header(struct response* resp, const char* name, const char* value)
     resp->headers = new;
 }
 
-int resp_to_str(struct response* resp, char* str) {
-    // Status line:
-    int end = sprintf(str, "%s %i %s\r\n", resp->protocol, resp->status, resp->reason);
-    // Headers:
+int resp_to_str(response_t* resp, char** str) {
+    // Find the string length:
+    int len = snprintf(NULL, 0, "%s %d %s\r\n", resp->protocol, resp->status, resp->reason);
     struct header* header = resp->headers;
     while (header != NULL) {
-        end += sprintf(str + end, "%s: %s\r\n", header->name,
-            header->value);
+        len += strlen(header->name) + strlen(header->value) + 4;
         header = header->next;
     }
-    end += sprintf(str + end, "\r\n");
-    return end;
+    len += 2; // account for last \r\n
+
+    *str = malloc(len + 1);
+    int end = sprintf(*str, "%s %d %s\r\n", resp->protocol, resp->status, resp->reason);
+    header = resp->headers;
+    while (header != NULL) {
+        end += sprintf(*str + end, "%s: %s\r\n", header->name, header->value);
+        header = header->next;
+    }
+    end += sprintf(*str + end, "\r\n");
+    *str[len] = '\0';
+
+    return len;
 }
 
-void resp_free(struct response* resp) {
+void resp_free(response_t* resp) {
     struct header* runner = resp->headers;
     struct header* next;
     while (runner != NULL) {

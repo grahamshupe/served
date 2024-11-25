@@ -9,7 +9,8 @@ typedef struct response {
     char reason[32];
     struct header* headers;
     int body_fd;
-    ssize_t bytes_sent;
+    ssize_t bytes_sent;  // The total number of bytes of the response sent, including the body
+    int msg_size;  // The size of the response, excluding the body
 } response_t;
 
 /*
@@ -40,6 +41,10 @@ Frees all malloc'd members in RESP, including RESP itself.
 */
 void resp_free(response_t* resp);
 
+/*
+Returns the value of the given header name in RESP.
+*/
+char* resp_get_header(response_t* resp, const char* name);
 
 
 #endif

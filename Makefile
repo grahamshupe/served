@@ -1,6 +1,6 @@
 SRC=src
 CC=gcc
-CFLAGS=-I $(SRC)
+CFLAGS=-I $(SRC) -g
 TFLAGS=-Wall -g -lcunit
 
 ODIR=obj
@@ -15,7 +15,7 @@ DEPS = $(patsubst %,$(SRC)/%,$(_DEPS))
 _OBJS = server.o util.o request.o response.o zf_log.o handler.o
 OBJS = $(patsubst %,$(ODIR)/%,$(_OBJS))
 
-_TESTS = request_test.o
+_TESTS = test.o request_test.o response_test.o
 TESTS = $(patsubst %,$(TDIR)/%,$(_TESTS))
 
 $(ODIR)/%.o: $(SRC)/%.c $(DEPS)
@@ -28,7 +28,7 @@ server: $(OBJS)
 	$(CC) -o $(TARGET) $^ $(CFLAGS)
 
 clean:
-	rm -rf $(ODIR)/*.o
+	rm -rf $(ODIR)/*.o $(TDIR)/*.o
 
 test: $(TESTS) $(filter-out $(ODIR)/server.o, $(OBJS))
 	$(CC) -o $(TESTTARGET) $^ $(TFLAGS)

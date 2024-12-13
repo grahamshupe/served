@@ -19,4 +19,11 @@ Returns -1 if none of the specified characters are found.
 */
 ssize_t memcspn(const char* str, const char* reject, size_t size);
 
+/*
+Gets the length of STR which consists entirely of characters in ACCEPT.
+Unlike strspn(), this only reads a max of SIZE bytes.
+*/
+ssize_t memspn(const char* str, const char* accept, size_t size);
+
+
 #endif

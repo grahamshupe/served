@@ -16,13 +16,16 @@ Functions for handling HTTP requests and gathering response data
 #include "handler.h"
 #include "request.h"
 #include "response.h"
-#include "server.h"
+//#include "server.h"
 #include "zf_log.h"
 
 #define INTEGER_STRING_LEN 12
 #define DEFAULT_BODY "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>Error</title></head><body>%s</body></html>"
 
-int handle_read_event(conn_info_t* conn_info) {
+static char* _get_file(char* target, response_t* resp, char* rootpath);
+static char* _get_mime(const char* filename);
+
+int handle_read_event(conn_info_t* conn_info, char* rootpath) {
 
     char* message = malloc(REQUEST_SIZE);
     ssize_t msg_size = conn_info->buffer_size;
@@ -43,7 +46,7 @@ int handle_read_event(conn_info_t* conn_info) {
             msg_offset += bytes_read;
 
             conn_info->resp = resp_new(parse_status);
-            handle_write_event(conn_info);
+            handle_write_event(conn_info, rootpath);
 
             if (conn_info->state == WRITING) {
                 if (msg_offset < received) {
@@ -87,14 +90,14 @@ int handle_read_event(conn_info_t* conn_info) {
     }
 }
 
-int handle_write_event(conn_info_t* conn_info) {
+int handle_write_event(conn_info_t* conn_info, char* rootpath) {
     response_t* resp = conn_info->resp;
     request_t* req = conn_info->req;
     struct stat stat;
     if (conn_info->state != WRITING) {
         // Get body information:
         if (resp->status == 200 && (req->method == GET || req->method == HEAD)) {
-            char* filename = _get_file(req->target, resp);
+            char* filename = _get_file(req->target, resp, rootpath);
             if (fstat(resp->body_fd, &stat) == -1) {
                 ZF_LOGE("Could not retrieve information about file: error %d", errno);
                 close(resp->body_fd);
@@ -103,7 +106,7 @@ int handle_write_event(conn_info_t* conn_info) {
             }
 
             char filesize[INTEGER_STRING_LEN];
-            snprintf(filesize, INTEGER_STRING_LEN, "%d", stat.st_size);
+            snprintf(filesize, INTEGER_STRING_LEN, "%ld", stat.st_size);
             resp_add_header(resp, "Content-Length", filesize);
             resp_add_header(resp, "Content-Type", _get_mime(filename));
         }
@@ -170,9 +173,14 @@ int handle_write_event(conn_info_t* conn_info) {
         }
     }
 
+    if (resp->body_fd > 0)
+        close(resp->body_fd);
+
     conn_info->state = IDLE;
     req_free(req);
+    conn_info->req = NULL;
     resp_free(resp);
+    conn_info->resp = NULL;
     return 1;
 }
 
@@ -183,7 +191,7 @@ On error, body_fd remains unchanged.
 Returns the santized file path of TARGET, or null on error. If the file does not exist,
 '404.html' will be returned and body_fd will be filled with it's file descriptor.
 */
-static char* _get_file(const char* target, response_t* resp) {
+static char* _get_file(char* target, response_t* resp, char* rootpath) {
     int fd;
     char* filename = target;
 
@@ -197,7 +205,7 @@ static char* _get_file(const char* target, response_t* resp) {
     if (filename[0] == '\0')
         filename = "index.html";
 
-    int root_fd = open(root_path, O_RDONLY | __O_PATH | O_DIRECTORY);
+    int root_fd = open(rootpath, O_RDONLY | __O_PATH | O_DIRECTORY);
     if (root_fd == -1) {
         ZF_LOGE("Could not open root path: error %d", errno);
         resp_change_status(resp, 500);

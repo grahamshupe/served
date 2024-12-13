@@ -114,3 +114,12 @@ void resp_free(response_t* resp) {
     free(resp);
 }
 
+char* resp_get_header(response_t* resp, const char* name) {
+    struct header* runner = resp->headers;
+    while (runner != NULL) {
+        if (strcmp(runner->name, name) == 0)
+            return runner->value;
+        runner = runner->next;
+    }
+    return NULL;
+}

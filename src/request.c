@@ -22,7 +22,7 @@ TODO:
 static int _req_parse_start(request_t* req) {
     char* message = req->raw_message + req->bytes_read;
     // Get method:
-    if (req->method == NULL) {
+    if (req->method == 0) {
         if (req->msg_size < 6) {
             // startline can't possibly be long enough
             return 400;
@@ -111,7 +111,7 @@ static int _req_parse_headers(request_t* req) {
         // Get field value:
         ssize_t ows = memspn(message, " ", line_size - (name_size + 1));
         message += ows;  // ignore beginning optional white space
-        ssize_t val_size = memcspn(message, " \r", line_size - (name_size + 1 + ows));
+        ssize_t val_size = memcspn(message, " \r", line_size - (name_size + ows));
         if (val_size == -1) {
             free(header);
             return 400;
@@ -164,7 +164,7 @@ request_t* req_parse(char* message, request_t* req, ssize_t msg_size, int* statu
     req->raw_message = malloc(req->msg_size);
     strncpy(req->raw_message, message, req->msg_size);
 
-    return 200;
+    return req;
 }
 
 void req_free(struct request* req) {

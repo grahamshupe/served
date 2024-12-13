@@ -2,6 +2,9 @@
 #define SERVER_H_
 
 #include "request.h"
+#include "response.h"
+
+extern char* root_path;  // The base directory to retrieve files from
 
 typedef enum {
     ERR = -1,  // Connection has caused a server error
@@ -14,11 +17,10 @@ typedef struct {
     int fd;
     conn_state_t state;
     request_t* req;
+    response_t* resp;
+    char* msg_buffer;
+    ssize_t buffer_size;
 } conn_info_t;
-
-typedef struct {
-    char* root_path;
-} server_opts_t;
 
 
 

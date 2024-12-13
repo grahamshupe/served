@@ -8,8 +8,9 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <errno.h>
 
-#include "server.h"
+//#include "server.h"
 #include "response.h"
 #include "request.h"
 #include "handler.h"
@@ -20,6 +21,8 @@
 #define QUEUE_SIZE 64
 #define DEFAULT_THREAD_NUM 4
 #define MAX_EVENTS 64
+
+char* rootpath = NULL;
 
 struct threadargs {
     int epoll_fd;
@@ -133,32 +136,62 @@ void* epoll_listen(struct threadargs* targs) {
         int conn_fd;
         for (int n = 0; n < nfds; n++) {
             if (events[n].data.fd == listener_fd) {
+                // This is a new connection request on the main socket
                 if ((conn_fd = accept(listener_fd, NULL, NULL)) == -1) {
                     perror("accept");
                     exit(EXIT_FAILURE);
                 }
                 set_nonblocking(conn_fd);
 
-                conn_info_t* info = malloc(sizeof(conn_info_t));
+                conn_info_t* info = calloc(1, sizeof(conn_info_t));
                 info->fd = conn_fd;
-                info->state = IDLE;
-                info->req = NULL;
 
                 ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
                 ev.data.ptr = info;
-                
+
                 if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn_fd, &ev) == -1) {
                     perror("epoll_ctl");
                     continue;
                 }
             } else {
+                // This is another request on an established connection
                 conn_info_t* info = events[n].data.ptr;
-                if (info->state == IDLE) {
-                    // rearm and leave
-                } else if (info->state == READING) {
+                if (info->state == IDLE || info->state == READING) {
+                    if (handle_read_event(info, rootpath) <= 0) {
+                        ZF_LOGD("Closing connection on fd %d due to shutdown or error", info->fd);
+                        close(info->fd);
+                        free(info);
+                        continue;
+                    }
+                } else if (info->state == WRITING) {
+                    if (handle_write_event(info, rootpath) <= 0) {
+                        ZF_LOGD("Closing connection on fd %d due to shutdown or error", info->fd);
+                        close(info->fd);
+                        free(info);
+                        continue;
+                    }
+                }
 
+                // Rearm the fd:
+                if (info->state == IDLE || info->state == READING) {
+                    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
+                    ev.data.ptr = info;
+                    if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, info->fd, &ev) == -1) {
+                        ZF_LOGE("Could not modify epoll for fd %d: error %d", info->fd, errno);
+                        continue;
+                    }
+                } else if (info->state == WRITING) {
+                    ev.events = EPOLLOUT | EPOLLET | EPOLLONESHOT;
+                    ev.data.ptr = info;
+                    if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, info->fd, &ev) == -1) {
+                        ZF_LOGE("Could not modify epoll for fd %d: error %d", info->fd, errno);
+                        continue;
+                    }
                 } else {
-                    // shutdown connection and its epoll stuff
+                    ZF_LOGW("Uncaught error in fd %d, closing connection", info->fd);
+                    close(info->fd);
+                    free(info);
+                    continue;
                 }
 
             }
@@ -169,14 +202,13 @@ void* epoll_listen(struct threadargs* targs) {
 
 
 int main(int argc, char* argv[]) {
-    char* root_path = NULL;
     int num_threads = DEFAULT_THREAD_NUM;  // todo: add this to optargs
 
     int opt = -1;
     while ((opt = getopt(argc, argv, "r:")) != -1) {
         switch (opt) {
             case 'r':
-                root_path = strdup(optarg);
+                rootpath = strdup(optarg);
                 break;
             default:
                 printf("Invalid argument '%c'\n", opt);
@@ -184,8 +216,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (root_path == NULL)
-        root_path = strdup("test/root");
+    if (rootpath == NULL)
+        rootpath = strdup("test/root");
 
     puts("Served: setting up listening socket");
     int sock_fd = get_socket();
@@ -232,12 +264,12 @@ int main(int argc, char* argv[]) {
             // child:
             ZF_LOGD("Handling connection on socket %d", client_fd);
 
-            handle_connection(client_fd, root_path);
+            //handle_connection(client_fd, root_path);
             close(client_fd);
             return 0;
         }
     }
 
-    free(root_path);  // unreachable but whatever
+    free(rootpath);  // unreachable but whatever
     return 0;
 }

@@ -5,7 +5,7 @@
 #define MAX_TARGET_SIZE 512  // Max size of the request-line target
 
 typedef enum {
-    GET,
+    GET = 1,
     HEAD,
     POST
 } method_t;
